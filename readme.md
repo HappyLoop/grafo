@@ -3,7 +3,7 @@ A simple library for building runnable tree structures. Trees are built using No
 contain code to be run.
 
 ## Zen ##
-1. Names should be explicit: a Node is a Node.
+1. Follow established names: a Node is a Node, not a "Leaf".
 2. Syntax sugar is sweet in moderation.
 3. Give the programmer granular control.
 

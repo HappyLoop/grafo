@@ -1,4 +1,4 @@
-from .components import Node
+from .components import Node, PickerNode
 from .executor import AsyncTreeExecutor
 
-__all__ = ["Node", "AsyncTreeExecutor"]
+__all__ = ["Node", "PickerNode", "AsyncTreeExecutor"]

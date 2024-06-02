@@ -1,14 +1,13 @@
-# WHAT IS IT #
+## What ##
 A simple library for building runnable tree structures. Trees are built using Nodes, which
 contain code to be run.
 
-# ZEN #
-1) No fancy names: favor established naming conventions (i.e. a Node is a Node, not a 'Leaf').
-2) Low sugar level: syntax sugar is cool, until there's layers of it. Keep it moderate.
-3) Simplicity: fewer object types makes everything easier to understand.
-4) Granular control: the programmer should have as much control as possible.
+## Zen ##
+1. Names should be explicit: a Node is a Node.
+2. Syntax sugar is sweet in moderation.
+3. Give the programmer granular control.
 
-# AXIOMS #
+## Axioms ##
 1) A tree can only have one root node.
 2) Nodes are executed concurrently.
-3) Execution of a node begins as soon as it's parent has finished running.
+3) Upon finishing execution, a node attempts to queue it's children for execution.

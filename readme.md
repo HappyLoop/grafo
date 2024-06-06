@@ -1,3 +1,7 @@
+## How to Use During Development ##
+`pip install -e .` to install on your environment
+`pytest` to run tests, add `-s` flag for tests to run `print` statements
+
 ## What ##
 A simple library for building runnable tree structures. Trees are built using Nodes, which
 contain code to be run.

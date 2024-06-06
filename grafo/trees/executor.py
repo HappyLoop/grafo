@@ -2,7 +2,7 @@ import asyncio
 from logging import Logger
 from typing import Any, Optional
 
-from .components import Node, PickerNode
+from .components import Node, PickerNode, UnionNode
 
 
 class AsyncTreeExecutor:
@@ -122,29 +122,19 @@ class AsyncTreeExecutor:
             self._output[str(node.uuid)] = result
             node.set_output(result)
 
-            ###########################################################################
-            # Instead of doing this, we should check isinstace(node, PickerNode) and then execute that class' pick method
             if isinstance(node, PickerNode):
                 children = await node.choose()
-            # if node.picker:
-            #     try:
-            #         children = await node.picker(node, result, node.children) or []
-            #     except Exception as e:
-            #         if self._logger:
-            #             self._logger.error(
-            #                 f"Error picking children for node {node.uuid}: {e}"
-            #             )
-            #         children = []
             else:
                 children = node.children or []
-            ###########################################################################
 
-            for child in children:
-                if self._forward_results:
+            for child in children or []:
+                if node.forward_output and not isinstance(child, UnionNode):
                     if isinstance(result, list):
                         child.update(args=result)
                     else:
                         child.update(args=[result])
+                elif isinstance(child, UnionNode):
+                    child.parent_completed(node.uuid, node.output)
 
                 if child.uuid not in self._visited_nodes:
                     self._queue.put_nowait(child)
@@ -198,6 +188,9 @@ class AsyncTreeExecutor:
                     self.__validate_element(child_node)
 
                     parent_node.connect(child_node)
+                    if isinstance(child_node, UnionNode):
+                        child_node.add_parent(parent_node)
+
                     self._num_workers += 1
                     connect_children(child_node, descendants_iterable)
 
@@ -205,6 +198,9 @@ class AsyncTreeExecutor:
                 for child_node in children_iterable:
                     self.__validate_element(child_node)
                     parent_node.connect(child_node)
+                    if isinstance(child_node, UnionNode):
+                        child_node.add_parent(parent_node)
+
                     self._num_workers += 1
 
         for root_node, children_iterable in tree_dict.items():

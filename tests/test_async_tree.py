@@ -60,7 +60,7 @@ async def test_async_tree_manual():
 
     executor = AsyncTreeExecutor(root=root_node, num_workers=3)
     result = await executor.run()
-    print(result)
+    print(result)  # NOTE: run pytest with flag '-s' to see the print output
 
 
 # Test using a JSON-like structure
@@ -86,4 +86,4 @@ async def test_async_tree():
     executor = AsyncTreeExecutor(forward_results=True)
     tree = executor | nodes
     result = await tree.run()
-    print(result)
+    print(result)  # NOTE: run pytest with flag '-s' to see the print output

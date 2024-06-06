@@ -2,6 +2,24 @@ import inspect
 from typing import Any, Callable, Optional, Self, Type
 
 from grafo.interpreters.base import LLM
+import asyncio
+
+
+def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    Decorator that prevents a method from being called if the node is already running.
+    """
+
+    def wrapper(self, *args: Any, **kwargs: Any) -> Any:
+        if self.output is not None:
+            raise ValueError("This node has already produced an output.")
+
+        if not self._is_running:
+            return func(self, *args, **kwargs)
+        else:
+            raise ValueError("This node is already running.")
+
+    return wrapper
 
 
 class Node:
@@ -16,6 +34,7 @@ class Node:
         :param kwargs: The keyword arguments to pass to the coroutine.
         :param children: The children nodes of this node.
         :param picker: A function that receives the current node, the result of running the node, and its children. It then returns a list of children to be queued. If None, all children are queued.
+        :param forward_output: Whether to forward the output of this node to its children as arguments.
     """
 
     _output: Any
@@ -30,6 +49,7 @@ class Node:
         kwargs: Optional[dict[str, Any]] = None,
         children: Optional[list["Node"]] = None,
         picker: Optional[Callable] = None,
+        forward_output: Optional[bool] = False,
     ):
         self.__validate_param(uuid, "uuid", str)
         self.__validate_param(name, "name", str)
@@ -58,6 +78,7 @@ class Node:
         self._children = children if children is not None else []
         self._picker = picker
         self._is_running = False
+        self._forward_output = forward_output
 
     def __repr__(self) -> str:
         return f"Node(uuid={self.uuid}, name={self.name})"
@@ -99,6 +120,10 @@ class Node:
         return self._output
 
     @property
+    def forward_output(self):
+        return self._forward_output
+
+    @property
     def is_running(self):
         return self._is_running
 
@@ -121,23 +146,7 @@ class Node:
                 f"'{param_name}' is required and must be of type {expected_type.__name__}."
             )
 
-    def __safe_execution(func: Callable):  # type: ignore
-        """
-        Decorator that prevents a method from being called if the node is already running.
-        """
-
-        def wrapper(self, *args, **kwargs):
-            if self.output is not None:
-                raise
-
-            if not self._is_running:
-                return func(self, *args, **kwargs)
-            else:
-                raise ValueError("This node is already running.")
-
-        return wrapper
-
-    @__safe_execution
+    @safe_execution
     def connect(self, child: Self):
         """
         Connects a child to this node.
@@ -146,7 +155,7 @@ class Node:
             raise ValueError("The 'child' parameter must be a Node instance.")
         self.children.append(child)
 
-    @__safe_execution
+    @safe_execution
     def disconnect(self, child: Self):
         """
         Disconnects a child from this node.
@@ -155,7 +164,7 @@ class Node:
             raise ValueError("The 'child' parameter must be a Node instance.")
         self.children.remove(child)
 
-    @__safe_execution
+    @safe_execution
     def update(
         self,
         name: str | None = None,
@@ -191,7 +200,7 @@ class Node:
         self._args = args if args is not None else []
         self._kwargs = kwargs if kwargs is not None else {}
 
-    @__safe_execution
+    @safe_execution
     async def run(self):
         """
         Asynchronously runs the coroutine of in this node.
@@ -203,7 +212,7 @@ class Node:
             self._is_running = False
         return result
 
-    @__safe_execution
+    @safe_execution
     def set_output(self, output: Any):
         """
         Sets the output of the node.
@@ -214,6 +223,17 @@ class Node:
 class PickerNode(Node):
     """
     A node that uses an LLM to determine which children to queue next.
+
+    :param uuid: The unique identifier of the node.
+    :param name: The name of the node.
+    :param description: The description of the node.
+    :param coroutine: The coroutine function to execute.
+    :param llm: The LLM to use for picking children.
+    :param picker: A function that receives the current node, the result of running the node, and its children. It then returns a list of children to be queued. If None, all children are queued.
+    :param args: The arguments to pass to the coroutine.
+    :param kwargs: The keyword arguments to pass to the coroutine.
+    :param children: The children nodes of this node.
+    :param forward_output: Whether to forward the output of this node to its children as arguments.
     """
 
     def __init__(
@@ -223,26 +243,125 @@ class PickerNode(Node):
         description: str,
         coroutine: Callable,
         llm: LLM,
+        picker: Callable,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         children: Optional[list["Node"]] = None,
-        picker: Optional[Callable] = None,
+        forward_output: Optional[bool] = False,
     ):
         super().__init__(
             uuid, name, description, coroutine, args, kwargs, children, picker
         )
 
         self._llm = llm
+        self._picker = picker
+        self._forward_output = forward_output
 
     @property
     def llm(self):
         return self._llm
 
-    async def choose(self) -> list[Node]:
+    @property
+    def picker(self):
+        return self._picker
+
+    @safe_execution
+    async def choose(self):
         """
         Picks the children to queue next based on the result of the node.
         """
-        # Use a child's name, description and coroutine with an LLM's tool calling functionality to pick among children
-        raise NotImplementedError(
-            "You must implement the 'picker' method in a PickerNode subclass."
-        )
+        if self.picker:
+            return await self.picker(self, self.output, self.children)
+        return None
+
+
+class UnionNode(Node):
+    """
+    A node that waits for all its parents to finish executing before continuing.
+
+    :param uuid: The unique identifier of the node.
+    :param name: The name of the node.
+    :param description: The description of the node.
+    :param coroutine: The coroutine function to execute.
+    :param args: The arguments to pass to the coroutine.
+    :param kwargs: The keyword arguments to pass to the coroutine.
+    :param parents: The parent nodes of this node.
+    :param use_parents_output: Whether to use the output of the parents as arguments to the coroutine.
+    :param forward_output: Whether to forward the output of this node to its children as arguments.
+    """
+
+    def __init__(
+        self,
+        uuid: str,
+        name: str,
+        description: str,
+        coroutine: Callable,
+        args: Optional[list[Any]] = None,
+        kwargs: Optional[dict[str, Any]] = None,
+        parents: Optional[list["UnionNode"]] = None,
+        use_parents_output: Optional[bool] = False,
+        forward_output: Optional[bool] = False,
+    ):
+        super().__init__(uuid, name, description, coroutine, args, kwargs)
+        self._parents = parents if parents is not None else []
+        self._parent_outputs = {}
+        self._num_parents_completed = 0
+        self._use_parents_output = use_parents_output
+        self._forward_output = forward_output
+
+    @property
+    def parents(self):
+        return self._parents
+
+    @property
+    def parent_outputs(self):
+        return self._parent_outputs
+
+    @property
+    def num_parents_completed(self):
+        return self._num_parents_completed
+
+    @property
+    def use_parents_output(self):
+        return self._use_parents_output
+
+    @safe_execution
+    def add_parent(self, parent: "UnionNode"):
+        """
+        Adds a parent to this node.
+        """
+        if not isinstance(parent, Node):
+            raise ValueError("The 'parent' parameter must be a UnionNode instance.")
+        self._parents.append(parent)
+
+    @safe_execution
+    def parent_completed(self, parent_uuid: str, output: Any):
+        """
+        Marks a parent as completed and stores its output.
+        """
+        self._parent_outputs[parent_uuid] = output
+        self._num_parents_completed += 1
+
+    @safe_execution
+    async def run(self):
+        """
+        Waits for all parents to complete before running the coroutine.
+        """
+        while self.num_parents_completed < len(self.parents):
+            await asyncio.sleep(0.1)
+
+        if self.use_parents_output:
+            self._args = [output for output in self.parent_outputs.values()]
+        ##############################
+        # Need a way to pass the output of parents as kwargs too
+        # result = await self._coroutine(*self.args, **self.kwargs)
+        ##############################
+
+        self._is_running = True
+        try:
+            result = await self._coroutine(
+                *self.args  # NOTE: currently not passing kwargs
+            )
+        finally:
+            self._is_running = False
+        return result

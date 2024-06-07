@@ -152,12 +152,12 @@ class Node:
     @safe_execution
     def update(
         self,
-        name: str | None = None,
-        description: str | None = None,
-        children: list[Self] | None = None,
-        coroutine: Callable | None = None,
-        args: list[Any] | None = None,
-        kwargs: dict[str, Any] | None = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        children: Optional[list[Self]] = None,
+        coroutine: Optional[Callable] = None,
+        args: Optional[list[Any]] = None,
+        kwargs: Optional[dict[str, Any]] = None,
     ):
         """
         Updates the node with new data.
@@ -227,35 +227,30 @@ class PickerNode(Node):
         name: str,
         description: str,
         coroutine: Callable,
-        picker: Callable,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         children: Optional[list["Node"]] = None,
         forward_output: Optional[bool] = False,
     ):
-        if not isinstance(picker, Callable):
+        if not isinstance(coroutine, Callable):
             raise ValueError("The 'picker' parameter must be a callable function.")
 
         super().__init__(uuid, name, description, coroutine, args, kwargs, children)
 
-        self._picker = picker
         self._forward_output = forward_output
 
     def __repr__(self) -> str:
         return f"PickerNode(uuid={self.uuid}, name={self.name})"
-
-    @property
-    def picker(self):
-        return self._picker
 
     @safe_execution
     async def choose(self):
         """
         Picks the children to queue next based on the result of the node.
         """
-        if self.picker:
-            return await self.picker(self, self.output, self.children)
-        return None
+        return await self.coroutine(self, self.children, *self.args, **self.kwargs)
+
+    async def run(self):
+        raise NotImplementedError("PickerNode does not support the 'run' method.")
 
 
 class UnionNode(Node):
@@ -269,7 +264,6 @@ class UnionNode(Node):
     :param args: The arguments to pass to the coroutine.
     :param kwargs: The keyword arguments to pass to the coroutine.
     :param parents: The parent nodes of this node.
-    :param use_parents_output: Whether to use the output of the parents as arguments to the coroutine.
     :param forward_output: Whether to forward the output of this node to its children as arguments.
 
     >>> USE WITH CARE!
@@ -285,14 +279,12 @@ class UnionNode(Node):
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         parents: Optional[list["UnionNode"]] = None,
-        use_parents_output: Optional[bool] = False,
         forward_output: Optional[bool] = False,
     ):
         super().__init__(uuid, name, description, coroutine, args, kwargs)
         self._parents = parents if parents is not None else []
         self._parent_outputs = {}
         self._num_parents_completed = 0
-        self._use_parents_output = use_parents_output
         self._forward_output = forward_output
 
     def __repr__(self) -> str:
@@ -310,9 +302,20 @@ class UnionNode(Node):
     def num_parents_completed(self):
         return self._num_parents_completed
 
-    @property
-    def use_parents_output(self):
-        return self._use_parents_output
+    @safe_execution
+    def append_arguments(
+        self,
+        args: Optional[list[Any]] = None,
+        kwargs: Optional[dict[str, Any]] = None,
+    ):
+        """
+        Appends arguments to the node.
+        """
+        if args:
+            self._args.extend(args)
+
+        if kwargs:
+            self._kwargs.update(kwargs)
 
     @safe_execution
     def add_parent(self, parent: "UnionNode"):
@@ -340,9 +343,6 @@ class UnionNode(Node):
             await asyncio.sleep(0.1)
 
         self._is_running = True
-
-        if self.use_parents_output:
-            self._args = [output for output in self.parent_outputs.values()]
 
         try:
             async with asyncio.Lock():

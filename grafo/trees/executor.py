@@ -1,4 +1,5 @@
 import asyncio
+import asyncio.log
 from logging import Logger
 from typing import Any, Optional
 
@@ -40,6 +41,9 @@ class AsyncTreeExecutor:
         self._visited_nodes = set()
         self._enqueued_nodes = set()
 
+        self._graceful_stop_flag = False
+        self._graceful_stop_nodes = set()
+
     @property
     def root(self):
         return self._root
@@ -75,6 +79,14 @@ class AsyncTreeExecutor:
     @property
     def enqueued_nodes(self):
         return self._enqueued_nodes
+
+    @property
+    def global_stop_flag(self):
+        return self._graceful_stop_flag
+
+    @property
+    def graceful_stop_nodes(self):
+        return self._graceful_stop_nodes
 
     def __or__(self, tree_dict: dict[Node, Any]):
         """
@@ -168,78 +180,93 @@ class AsyncTreeExecutor:
         result = None
         while True:
             node: Node = await self._queue.get()
+
             if node is None:
                 break
 
+            # Run the node
             try:
                 if node.uuid not in self._visited_nodes:
-                    result = await node.run()
+                    if not isinstance(node, PickerNode):
+                        result = await node.run()
+                    else:
+                        result = await node.choose()
             except Exception as e:
-                if self._logger:
-                    self._logger.error(f"Error running node {node.uuid}: {e}")
+                if self._quit_tree_on_error:
+                    self._graceful_stop_flag = True
+                    self._graceful_stop_nodes.add(node)
+                    self._queue.task_done()
+                    if self._logger:
+                        self._logger.error(f"Quit at {node}. Error: {e}")
+                    break
+
+                elif self._cutoff_branch_on_error:
+                    self._queue.task_done()
+
+                    if self._logger:
+                        self._logger.error(f"Cutoff at {node}. Error: {e}")
+                    break
+
+                elif self._logger:
+                    self._logger.error(f"Error on {node}: {e}")
             finally:
                 self._visited_nodes.add(node.uuid)
-
-            if isinstance(result, Exception) and self._cutoff_branch_on_error:
-                self._queue.task_done()
-                if self._logger:
-                    self._logger.error(f"Stopping branch at node {node.uuid}")
-                break
-
-            if isinstance(result, Exception) and self._quit_tree_on_error:
-                self._queue.task_done()
-                await self.__stop_all_workers()
-                if self._logger:
-                    self._logger.error(
-                        f"Stopping tree at node {node.uuid} due to error."
-                    )
-                break
 
             self._output[str(node.uuid)] = result
             node.set_output(result)
 
+            # Update children
             if isinstance(node, PickerNode):
-                children = await node.choose()
+                children = result or []
             else:
                 children = node.children or []
 
             for child in children or []:
-                if node.forward_output and not isinstance(child, UnionNode):
-                    if isinstance(result, list):
-                        args = []
-                        kwargs = {}
+                args = []
+                kwargs = {}
+                if isinstance(result, list):
+                    for res in result:
+                        if isinstance(res, dict):
+                            kwargs.update(res)
+                        else:
+                            args.append(res)
 
-                        for res in result:
-                            if isinstance(res, dict):
-                                kwargs.update(res)
-                            else:
-                                args.append(res)
+                elif isinstance(result, dict):
+                    kwargs.update(result)
+                else:
+                    args.append(result)
 
-                        child.update(args=args, kwargs=kwargs)
-                    elif isinstance(result, dict):
-                        child.update(kwargs=result)
+                if node.forward_output:
+                    if isinstance(child, UnionNode):
+                        child.parent_completed(node.uuid, node.output)
+                        child.append_arguments(args=args, kwargs=kwargs)
                     else:
-                        child.update(args=[result])
-                elif isinstance(child, UnionNode):
-                    child.parent_completed(node.uuid, node.output)
+                        child.update(args=args, kwargs=kwargs)
+                else:
+                    if isinstance(child, UnionNode):
+                        child.parent_completed(node.uuid, node.output)
 
-            async with asyncio.Lock():
-                for node in children:
-                    if node not in self._enqueued_nodes:
-                        self._queue.put_nowait(node)
-                        self._enqueued_nodes.add(node)
+            # Enqueue children
+            if not self._graceful_stop_flag:
+                async with asyncio.Lock():
+                    for node in children:
+                        if node not in self._enqueued_nodes:
+                            self._queue.put_nowait(node)
+                            self._enqueued_nodes.add(node)
 
             self._queue.task_done()
 
     async def __stop_all_workers(self):
         """
-        Queue a None for each worker to stop them.
+        Stops all workers.
         """
         for _ in range(self._num_workers):
-            await self._queue.put(None)
+            self._queue.put_nowait(None)
 
     def __validate_element(self, obj: Any):
-        "Check if an object is an instance of Node."
+        """
+        Check if an object is an instance of Node.
+        """
         if not isinstance(obj, Node):
             raise ValueError(f"Object is not a Node instance. Object: {obj}")
 
@@ -247,7 +274,7 @@ class AsyncTreeExecutor:
         """
         Runs the tree with the specified number of workers.
         """
-        await self._queue.put(self.root)
+        self._queue.put_nowait(self.root)
 
         workers = [
             asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
@@ -256,5 +283,12 @@ class AsyncTreeExecutor:
         await self._queue.join()
         await self.__stop_all_workers()
         await asyncio.gather(*workers, return_exceptions=True)
+
+        if self.logger:
+            self.logger.debug("Tree execution complete.")
+            if self._graceful_stop_flag:
+                self.logger.debug(
+                    f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
+                )
 
         return self._output

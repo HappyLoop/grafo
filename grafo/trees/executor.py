@@ -25,7 +25,6 @@ class AsyncTreeExecutor:
         self,
         root: Optional[Node] = None,
         num_workers: int = 1,
-        forward_results: bool = False,
         logger: Logger | None = None,
         cutoff_branch_on_error: bool = False,
         quit_tree_on_error: bool = False,
@@ -33,13 +32,13 @@ class AsyncTreeExecutor:
         self._root = root
         self._queue = asyncio.Queue()
         self._num_workers = num_workers
-        self._forward_results = forward_results
         self._output = dict()
 
         self._logger = logger
         self._cutoff_branch_on_error = cutoff_branch_on_error
         self._quit_tree_on_error = quit_tree_on_error
         self._visited_nodes = set()
+        self._enqueued_nodes = set()
 
     @property
     def root(self):
@@ -52,10 +51,6 @@ class AsyncTreeExecutor:
     @property
     def num_workers(self):
         return self._num_workers
-
-    @property
-    def forward_results(self):
-        return self._forward_results
 
     @property
     def output(self):
@@ -77,85 +72,14 @@ class AsyncTreeExecutor:
     def visited_nodes(self):
         return self._visited_nodes
 
+    @property
+    def enqueued_nodes(self):
+        return self._enqueued_nodes
+
     def __or__(self, tree_dict: dict[Node, Any]):
         """
-        Override the `|` operator to create an instance of AsyncTreeExecutor and build the tree.
-        """
-        self.__build_tree(tree_dict)
-        return self
-
-    async def __worker(self):
-        """
-        A worker that executes the work contained in a Node.
-        """
-        result = None
-        while True:
-            node: Node = await self._queue.get()
-            if node is None:
-                break
-
-            try:
-                result = await node.run()
-                self._visited_nodes.add(node.uuid)
-            except Exception as e:
-                result = e
-                if self._logger:
-                    self._logger.error(f"Error running node {node.uuid}: {e}")
-
-            if isinstance(result, Exception) and self._cutoff_branch_on_error:
-                self._queue.task_done()
-                if self._logger:
-                    self._logger.error(
-                        f"Stopping branch at node {node.uuid} due to error."
-                    )
-                break
-
-            if isinstance(result, Exception) and self._quit_tree_on_error:
-                self._queue.task_done()
-                await self.__stop_all_workers()
-                if self._logger:
-                    self._logger.error(
-                        f"Stopping tree at node {node.uuid} due to error."
-                    )
-                break
-
-            self._output[str(node.uuid)] = result
-            node.set_output(result)
-
-            if isinstance(node, PickerNode):
-                children = await node.choose()
-            else:
-                children = node.children or []
-
-            for child in children or []:
-                if node.forward_output and not isinstance(child, UnionNode):
-                    if isinstance(result, list):
-                        child.update(args=result)
-                    else:
-                        child.update(args=[result])
-                elif isinstance(child, UnionNode):
-                    child.parent_completed(node.uuid, node.output)
-
-                if child.uuid not in self._visited_nodes:
-                    self._queue.put_nowait(child)
-
-            self._queue.task_done()
-
-    async def __stop_all_workers(self):
-        """
-        Queue a None for each worker to stop them.
-        """
-        for _ in range(self._num_workers):
-            await self._queue.put(None)
-
-    def __validate_element(self, obj: Any):
-        "Check if an object is an instance of Node."
-        if not isinstance(obj, Node):
-            raise ValueError(f"Object is not a Node instance. Object: {obj}")
-
-    def __build_tree(self, tree_dict: dict[Node, Any]):
-        """
-        Builds a tree of nodes from nested dictionaries.
+        Override the `|` operator to create an instance of AsyncTreeExecutor and builds
+        a tree of nodes from nested dictionaries.
 
         Example:
         {
@@ -185,6 +109,13 @@ class AsyncTreeExecutor:
 
             if isinstance(children_iterable, dict):
                 for child_node, descendants_iterable in children_iterable.items():
+                    if isinstance(parent_node, PickerNode) and isinstance(
+                        child_node, UnionNode
+                    ):
+                        raise ValueError(
+                            "UnionNodes cannot be children of PickerNodes."
+                        )
+
                     self.__validate_element(child_node)
 
                     parent_node.connect(child_node)
@@ -196,6 +127,13 @@ class AsyncTreeExecutor:
 
             elif isinstance(children_iterable, list):
                 for child_node in children_iterable:
+                    if isinstance(parent_node, PickerNode) and isinstance(
+                        child_node, UnionNode
+                    ):
+                        raise ValueError(
+                            "UnionNodes cannot be children of PickerNodes."
+                        )
+
                     self.__validate_element(child_node)
                     parent_node.connect(child_node)
                     if isinstance(child_node, UnionNode):
@@ -211,9 +149,99 @@ class AsyncTreeExecutor:
 
             elif isinstance(children_iterable, list):
                 for child_node in children_iterable:
+                    if isinstance(self, PickerNode) and isinstance(
+                        child_node, UnionNode
+                    ):
+                        raise ValueError(
+                            "UnionNodes cannot be children of PickerNodes."
+                        )
+
                     self.__validate_element(child_node)
                     root_node.connect(child_node)
                     self._num_workers += 1
+        return self
+
+    async def __worker(self):
+        """
+        A worker that executes the work contained in a Node.
+        """
+        result = None
+        while True:
+            node: Node = await self._queue.get()
+            if node is None:
+                break
+
+            try:
+                if node.uuid not in self._visited_nodes:
+                    result = await node.run()
+            except Exception as e:
+                if self._logger:
+                    self._logger.error(f"Error running node {node.uuid}: {e}")
+            finally:
+                self._visited_nodes.add(node.uuid)
+
+            if isinstance(result, Exception) and self._cutoff_branch_on_error:
+                self._queue.task_done()
+                if self._logger:
+                    self._logger.error(f"Stopping branch at node {node.uuid}")
+                break
+
+            if isinstance(result, Exception) and self._quit_tree_on_error:
+                self._queue.task_done()
+                await self.__stop_all_workers()
+                if self._logger:
+                    self._logger.error(
+                        f"Stopping tree at node {node.uuid} due to error."
+                    )
+                break
+
+            self._output[str(node.uuid)] = result
+            node.set_output(result)
+
+            if isinstance(node, PickerNode):
+                children = await node.choose()
+            else:
+                children = node.children or []
+
+            for child in children or []:
+                if node.forward_output and not isinstance(child, UnionNode):
+                    if isinstance(result, list):
+                        args = []
+                        kwargs = {}
+
+                        for res in result:
+                            if isinstance(res, dict):
+                                kwargs.update(res)
+                            else:
+                                args.append(res)
+
+                        child.update(args=args, kwargs=kwargs)
+                    elif isinstance(result, dict):
+                        child.update(kwargs=result)
+                    else:
+                        child.update(args=[result])
+                elif isinstance(child, UnionNode):
+                    child.parent_completed(node.uuid, node.output)
+
+            async with asyncio.Lock():
+                for node in children:
+                    if node not in self._enqueued_nodes:
+                        self._queue.put_nowait(node)
+                        self._enqueued_nodes.add(node)
+
+            self._queue.task_done()
+
+    async def __stop_all_workers(self):
+        """
+        Queue a None for each worker to stop them.
+        """
+        for _ in range(self._num_workers):
+            await self._queue.put(None)
+
+    def __validate_element(self, obj: Any):
+        "Check if an object is an instance of Node."
+        if not isinstance(obj, Node):
+            raise ValueError(f"Object is not a Node instance. Object: {obj}")
 
     async def run(self):
         """
@@ -227,6 +255,6 @@ class AsyncTreeExecutor:
 
         await self._queue.join()
         await self.__stop_all_workers()
-        await asyncio.gather(*workers)
+        await asyncio.gather(*workers, return_exceptions=True)
 
         return self._output

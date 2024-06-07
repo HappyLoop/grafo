@@ -12,8 +12,8 @@ contain code to be run.
 2) Nodes can be run concurrently.
 3) Dictionary outputs are passed as kwargs to children. All other types are passed as args.
 4) UnionNodes can never be direct children of PickerNodes. Safety first!
-5) Be careful with UnionNodes, they can cause invisible deadlocks.
-6) I said to be careful with UnionNodes, they can cause invisible deadlocks!
+5) ⚠️ Be careful with UnionNodes, they can cause invisible deadlocks. ⚠️
+6) ⚠️ I said to be careful with UnionNodes, they can cause invisible deadlocks! ⚠️
 
 ## How to Use During Development ##
 - `pip install -e .` to install on your environment

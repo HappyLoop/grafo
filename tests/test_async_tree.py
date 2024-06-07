@@ -1,49 +1,78 @@
-from typing import List, Optional, Any
 import asyncio
+from logging import Logger
+from typing import Any, List, Optional
 from uuid import uuid4
+
 import pytest
 
+from grafo.trees import AsyncTreeExecutor, Node, PickerNode, UnionNode
 
-from grafo.trees import Node, AsyncTreeExecutor
+logger = Logger("ROOT")
+logger.setLevel("DEBUG")
 
 
-# Helper function to create a node
 def create_node(
     name: str,
     coroutine: Any,
     picker: Optional[Any] = None,
-    children: Optional[List[Node]] = None,
+    is_union_node: bool = False,
 ) -> Node:
-    node = Node(
+    """
+    Create a node with the given name, coroutine, and picker function.
+    """
+    if picker:
+        return PickerNode(
+            uuid=str(uuid4()),
+            name=name,
+            description=f"{name.capitalize()} Node",
+            coroutine=coroutine,
+            args=[name],
+            picker=picker,
+            # forward_output=True,
+        )
+    if is_union_node:
+        return UnionNode(
+            uuid=str(uuid4()),
+            name=name,
+            description=f"{name.capitalize()} Node",
+            coroutine=coroutine,
+            args=[name],
+            # forward_output=True,
+        )
+
+    return Node(
         uuid=str(uuid4()),
         name=name,
         description=f"{name.capitalize()} Node",
         coroutine=coroutine,
         args=[name],
-        picker=picker,
+        # forward_output=True,
     )
-    if children:
-        for child in children:
-            node.connect(child)
-    return node
 
 
-# Example coroutine function for Node
 async def example_coroutine(name):
-    await asyncio.sleep(1)
-    print(f"Node {name} finished execution")
+    """
+    Example coroutine function that simulates a task that takes 1 second to complete.
+    """
+    await asyncio.sleep(0.5)
+    print(f"{name} executed")
     return f"{name} result"
 
 
 async def example_picker(node: Node, result: Any, children: List[Node]):
+    """
+    Example picker function that selects the first and third children of the root node.
+    """
     if "root" in node.name:
         return [children[0], children[2]]
     return []
 
 
-# Test using manual connections
 @pytest.mark.asyncio
 async def test_async_tree_manual():
+    """
+    Test the AsyncTreeExecutor using manual connections between nodes to build the tree.
+    """
     root_node = create_node("root", example_coroutine, example_picker)
     child_node1 = create_node("child1", example_coroutine)
     child_node2 = create_node("child2", example_coroutine)
@@ -63,9 +92,11 @@ async def test_async_tree_manual():
     print(result)  # NOTE: run pytest with flag '-s' to see the print output
 
 
-# Test using a JSON-like structure
 @pytest.mark.asyncio
 async def test_async_tree():
+    """
+    Test the AsyncTreeExecutor using a JSON-like structure to build the tree.
+    """
     root_node = create_node("root", example_coroutine, example_picker)
     child_node1 = create_node("child1", example_coroutine)
     child_node2 = create_node("child2", example_coroutine)
@@ -83,7 +114,40 @@ async def test_async_tree():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(forward_results=True)
+    executor = AsyncTreeExecutor()
     tree = executor | nodes
     result = await tree.run()
     print(result)  # NOTE: run pytest with flag '-s' to see the print output
+
+
+@pytest.mark.asyncio
+async def test_async_tree_with_union_node():
+    """
+    Test the AsyncTreeExecutor using a JSON-like structure to build the tree with a UnionNode.
+    """
+    root_node = create_node(
+        "root", example_coroutine
+    )  # NOTE: Careful about pickers, a picker who picks between two parents of a UnionNode can loop forever
+    child_node1 = create_node("child1", example_coroutine)
+    child_node2 = create_node("child2", example_coroutine)
+    child_node3 = create_node("child3", example_coroutine)
+    grandchild_node1 = create_node("grandchild1", example_coroutine, is_union_node=True)
+    grandchild_node2 = create_node("grandchild2", example_coroutine)
+
+    # Using a JSON-like structure and the '|' operator to build the tree
+    nodes = {
+        root_node: {
+            child_node1: None,
+            child_node2: [grandchild_node1],
+            child_node3: {grandchild_node1: [grandchild_node2]},
+        }
+    }
+
+    # Forward the results of each node to its children as arguments
+    executor = AsyncTreeExecutor(cutoff_branch_on_error=True, logger=logger)
+    tree = executor | nodes
+    result = await tree.run()
+    print(result)  # NOTE: run pytest with flag '-s' to see the print output
+
+
+asyncio.run(test_async_tree_with_union_node())

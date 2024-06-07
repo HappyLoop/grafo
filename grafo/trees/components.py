@@ -1,7 +1,6 @@
 import inspect
 from typing import Any, Callable, Optional, Self, Type
 
-from grafo.interpreters.base import LLM
 import asyncio
 
 
@@ -11,13 +10,9 @@ def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     def wrapper(self, *args: Any, **kwargs: Any) -> Any:
-        if self.output is not None:
-            raise ValueError("This node has already produced an output.")
-
         if not self._is_running:
             return func(self, *args, **kwargs)
-        else:
-            raise ValueError("This node is already running.")
+        # NOTE: on ELSE, error is not raised so as to not trigger branch/tree cutoff
 
     return wrapper
 
@@ -33,7 +28,6 @@ class Node:
         :param args: The arguments to pass to the coroutine.
         :param kwargs: The keyword arguments to pass to the coroutine.
         :param children: The children nodes of this node.
-        :param picker: A function that receives the current node, the result of running the node, and its children. It then returns a list of children to be queued. If None, all children are queued.
         :param forward_output: Whether to forward the output of this node to its children as arguments.
     """
 
@@ -48,7 +42,6 @@ class Node:
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         children: Optional[list["Node"]] = None,
-        picker: Optional[Callable] = None,
         forward_output: Optional[bool] = False,
     ):
         self.__validate_param(uuid, "uuid", str)
@@ -65,9 +58,6 @@ class Node:
         if any(not isinstance(child, Node) for child in children or []):
             raise ValueError("'children' parameter must be a list of <Node> instances")
 
-        if picker and not callable(picker):
-            raise ValueError("'picker' parameter must be a callable function")
-
         self._uuid = uuid
         self._name = name
         self._description = description
@@ -76,7 +66,6 @@ class Node:
         self._kwargs = kwargs if kwargs is not None else {}
         self._output = None
         self._children = children if children is not None else []
-        self._picker = picker
         self._is_running = False
         self._forward_output = forward_output
 
@@ -98,10 +87,6 @@ class Node:
     @property
     def children(self):
         return self._children
-
-    @property
-    def picker(self):
-        return self._picker
 
     @property
     def coroutine(self):
@@ -242,24 +227,22 @@ class PickerNode(Node):
         name: str,
         description: str,
         coroutine: Callable,
-        llm: LLM,
         picker: Callable,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         children: Optional[list["Node"]] = None,
         forward_output: Optional[bool] = False,
     ):
-        super().__init__(
-            uuid, name, description, coroutine, args, kwargs, children, picker
-        )
+        if not isinstance(picker, Callable):
+            raise ValueError("The 'picker' parameter must be a callable function.")
 
-        self._llm = llm
+        super().__init__(uuid, name, description, coroutine, args, kwargs, children)
+
         self._picker = picker
         self._forward_output = forward_output
 
-    @property
-    def llm(self):
-        return self._llm
+    def __repr__(self) -> str:
+        return f"PickerNode(uuid={self.uuid}, name={self.name})"
 
     @property
     def picker(self):
@@ -288,6 +271,9 @@ class UnionNode(Node):
     :param parents: The parent nodes of this node.
     :param use_parents_output: Whether to use the output of the parents as arguments to the coroutine.
     :param forward_output: Whether to forward the output of this node to its children as arguments.
+
+    >>> USE WITH CARE!
+    >>> This node can cause deadlocks if not used properly.
     """
 
     def __init__(
@@ -308,6 +294,9 @@ class UnionNode(Node):
         self._num_parents_completed = 0
         self._use_parents_output = use_parents_output
         self._forward_output = forward_output
+
+    def __repr__(self) -> str:
+        return f"UnionNode(uuid={self.uuid}, name={self.name})"
 
     @property
     def parents(self):
@@ -350,18 +339,17 @@ class UnionNode(Node):
         while self.num_parents_completed < len(self.parents):
             await asyncio.sleep(0.1)
 
+        self._is_running = True
+
         if self.use_parents_output:
             self._args = [output for output in self.parent_outputs.values()]
-        ##############################
-        # Need a way to pass the output of parents as kwargs too
-        # result = await self._coroutine(*self.args, **self.kwargs)
-        ##############################
 
-        self._is_running = True
         try:
-            result = await self._coroutine(
-                *self.args  # NOTE: currently not passing kwargs
-            )
+            async with asyncio.Lock():
+                result = await self._coroutine(
+                    *self.args,
+                    **self.kwargs,
+                )
         finally:
             self._is_running = False
         return result

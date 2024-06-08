@@ -29,4 +29,4 @@ Based on `asyncio` & `instructor`!
 - `pytest` to run tests, add `-s` flag for tests to run `print` statements
 
 ## Extras ##
-- [![Pydantic is All You Need]](https://www.youtube.com/embed/yj-wSRJwrrc)
+[![Pydantic is All You Need](https://i3.ytimg.com/vi/yj-wSRJwrrc/hqdefault.jpg)](https://www.youtube.com/embed/yj-wSRJwrrc)

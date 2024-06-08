@@ -8,6 +8,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 push-all.sh
+launch.json
 
 # C extensions
 *.so

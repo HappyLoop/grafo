@@ -51,10 +51,6 @@ class SQLWriter(BaseModel):
         ..., description="The Python code to build a pydantic schema for your query."
     )
 
-    def run(self):
-        """Run the query."""
-        print(f"Query: {self.query}")
-
 
 class TextSummarizer(BaseModel):
     """
@@ -73,10 +69,6 @@ class TextSummarizer(BaseModel):
         ..., description="The chain of thought behind your summary.", exclude=True
     )
     summary: str = Field(..., description="The summary of the text.")
-
-    def summarize(self):
-        """Summarize the text."""
-        print(f"Summary: {self.summary}")
 
 
 # Define an Agent
@@ -114,7 +106,7 @@ async def test_single_message():
         response_model=SQLWriter,
     )
 
-    print(json.dumps(response.model_dump(), indent=2))
+    logger.debug(json.dumps(response.model_dump(), indent=2))
 
 
 @pytest.mark.asyncio
@@ -157,7 +149,7 @@ async def test_multiple_messages():
         response_model=TextSummarizer,
     )
 
-    print(json.dumps(response.model_dump(), indent=2))
+    logger.debug(json.dumps(response.model_dump(), indent=2))
 
 
 @pytest.mark.asyncio
@@ -180,7 +172,7 @@ async def test_agent_with_tools():
         response_model=Agent,
     )
 
-    print(json.dumps(response.model_dump(), indent=2))
+    logger.debug(json.dumps(response.model_dump(), indent=2))
 
 
 asyncio.run(test_agent_with_tools())

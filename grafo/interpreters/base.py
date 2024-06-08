@@ -1,6 +1,5 @@
-from typing import Type, TypeVar, Generic
 from abc import ABC, abstractmethod
-
+from typing import Generic, Type, TypeVar
 
 T = TypeVar("T", bound="BaseLLM")
 
@@ -19,11 +18,6 @@ class BaseLLM(ABC):
     @abstractmethod
     def send(self, data: str) -> None:
         """Send data to the model."""
-        pass
-
-    @abstractmethod
-    def json_parser(self, data: str) -> None:
-        """Parses the JSON response from the model."""
         pass
 
 

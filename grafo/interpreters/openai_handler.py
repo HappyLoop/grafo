@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Optional
 
@@ -29,9 +28,3 @@ class OpenAIHandler(BaseLLM):
         return self.client.chat.completions.create(
             model=model, messages=messages, response_model=response_model
         )
-
-    def json_parser(self, data: str) -> str:
-        """
-        Parses the JSON response from OpenAI.
-        """
-        return json.loads(data[7:-3])

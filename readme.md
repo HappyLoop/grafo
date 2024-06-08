@@ -7,8 +7,6 @@ Based on `asyncio` & `instructor`!
 - `asyncio`: https://docs.python.org/3/library/asyncio.html
 - `instructor`: https://python.useinstructor.com/
 
-[![Pydantic is All You Need]](https://www.youtube.com/embed/yj-wSRJwrrc)
-
 ## HOW ##
 - We have a tree of interconected `Nodes` and an `asyncio.Queue()`
 - Upon each Node's execution, it queues its children up next
@@ -31,4 +29,4 @@ Based on `asyncio` & `instructor`!
 - `pytest` to run tests, add `-s` flag for tests to run `print` statements
 
 ## Extras ##
-https://www.youtube.com/watch?v=9ZhbA0FHZYc&ab_channel=MatthewBerman
+- [![Pydantic is All You Need]](https://www.youtube.com/embed/yj-wSRJwrrc)

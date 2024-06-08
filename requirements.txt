@@ -1,23 +1,39 @@
+aiohttp==3.9.5
+aiosignal==1.3.1
 annotated-types==0.7.0
 anyio==4.4.0
+attrs==23.2.0
 certifi==2024.6.2
+click==8.1.7
 colorama==0.4.6
 distro==1.9.0
--e git+https://github.com/paulomtts/grafo.git@bdeeb54a37001c25b1d68c969fbdb4d7f2fdafcf#egg=grafo
+docstring_parser==0.16
+frozenlist==1.4.1
+-e git+https://github.com/paulomtts/grafo.git@bae65850cf200ecca82dbabac3bcf6ce75f9047c#egg=grafo
 h11==0.14.0
 httpcore==1.0.5
 httpx==0.27.0
 idna==3.7
 iniconfig==2.0.0
+instructor==1.3.2
+markdown-it-py==3.0.0
+mdurl==0.1.2
+multidict==6.0.5
 openai==1.33.0
 packaging==24.0
 pluggy==1.5.0
 pydantic==2.7.2
 pydantic_core==2.18.3
+Pygments==2.18.0
 pytest==8.2.1
 pytest-asyncio==0.23.7
--e git+https://github.com/paulomtts/grafo.git@bdeeb54a37001c25b1d68c969fbdb4d7f2fdafcf#egg=schain
+rich==13.7.1
+-e git+https://github.com/paulomtts/grafo.git@bae65850cf200ecca82dbabac3bcf6ce75f9047c#egg=schain
 setuptools==70.0.0
+shellingham==1.5.4
 sniffio==1.3.1
+tenacity==8.3.0
 tqdm==4.66.4
+typer==0.12.3
 typing_extensions==4.12.1
+yarl==1.9.4

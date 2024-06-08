@@ -7,6 +7,9 @@ Based on `asyncio` & `instructor`!
 - `asyncio`: https://docs.python.org/3/library/asyncio.html
 - `instructor`: https://python.useinstructor.com/
 
+[![Watch the video](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://chatgpt.com/c/03c55964-9694-4cc8-b2bb-07e44c765333)
+
+
 ## HOW ##
 - We have a tree of interconected `Nodes` and an `asyncio.Queue()`
 - Upon each Node's execution, it queues its children up next

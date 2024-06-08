@@ -7,7 +7,7 @@ Based on `asyncio` & `instructor`!
 - `asyncio`: https://docs.python.org/3/library/asyncio.html
 - `instructor`: https://python.useinstructor.com/
 
-## HOW ##
+## How ##
 - We have a tree of interconected `Nodes` and an `asyncio.Queue()`
 - Upon each Node's execution, it queues its children up next
 - Workers stop when they find a `None` in the queue

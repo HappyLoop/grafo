@@ -9,6 +9,8 @@ Based on `asyncio` & `instructor`!
 
 <iframe width="1280" height="720" src="https://www.youtube.com/embed/yj-wSRJwrrc" title="Pydantic is all you need: Jason Liu" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
+[![Watch the video]](https://www.youtube.com/embed/yj-wSRJwrrc)
+
 ## HOW ##
 - We have a tree of interconected `Nodes` and an `asyncio.Queue()`
 - Upon each Node's execution, it queues its children up next

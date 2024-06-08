@@ -7,9 +7,7 @@ Based on `asyncio` & `instructor`!
 - `asyncio`: https://docs.python.org/3/library/asyncio.html
 - `instructor`: https://python.useinstructor.com/
 
-<iframe width="1280" height="720" src="https://www.youtube.com/embed/yj-wSRJwrrc" title="Pydantic is all you need: Jason Liu" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-
-[![Watch the video]](https://www.youtube.com/embed/yj-wSRJwrrc)
+[![Watch the video](https://img.youtube.com/vi/yj-wSRJwrrc/maxresdefault.jpg)](https://www.youtube.com/embed/yj-wSRJwrrc)
 
 ## HOW ##
 - We have a tree of interconected `Nodes` and an `asyncio.Queue()`

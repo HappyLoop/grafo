@@ -1,24 +1,11 @@
 import asyncio
-import logging
 from typing import Any, List, Optional
 from uuid import uuid4
 
 import pytest
 
 from grafo.trees import AsyncTreeExecutor, Node, PickerNode, UnionNode
-
-# Set up logger
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("grafo")
-
-formatter = logging.Formatter(
-    "\033[92m%(levelname)s\033[0m (%(asctime)s) %(message)s", datefmt="%H:%M:%S"
-)
-
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.propagate = False
+from grafo.logger import logger
 
 
 # Auxiliary functions

@@ -1,31 +1,12 @@
 import asyncio
 import json
-import logging
 from typing import Optional
 
 import pytest
 from pydantic import BaseModel, Field
 
 from grafo.interpreters import LLM, OpenAIHandler
-
-# Set up logger
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("grafo")
-
-formatter = logging.Formatter(
-    "\033[92m%(levelname)s\033[0m (%(asctime)s) %(message)s", datefmt="%H:%M:%S"
-)
-
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.propagate = False
-
-logging.getLogger("instructor").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("asyncio").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("openai").setLevel(logging.WARNING)
+from grafo.logger import logger
 
 
 # Define tools
@@ -71,17 +52,19 @@ class TextSummarizer(BaseModel):
     summary: str = Field(..., description="The summary of the text.")
 
 
-# Define an Agent
-class Agent(BaseModel):
+# Define an Agent-like entity
+class AgentLikeEntity(
+    BaseModel
+):  # NOTE: not really an Agent, just a simulation of tool choosing
     """
-    Use one or more of your tools to process the user's input.
+    Use your tools to process the user's input.
     """
 
     text_summary: Optional[TextSummarizer] = Field(
-        None, description="Only use if the user asked for a summary."
+        None, description="Use if user asked for a summary."
     )
     sql_writer: Optional[SQLWriter] = Field(
-        None, description="Only use if the user asked for an SQL query."
+        None, description="Use if the user asked for an SQL query."
     )
 
 
@@ -166,10 +149,13 @@ async def test_agent_with_tools():
             },
             {
                 "role": "user",
-                "content": "Write me an SQL query to retrieve name and tag from the products table.",
+                "content": """Write me an SQL query to retrieve name and tag from the products 
+                              table where the tag includes 'abc'. Afterwards, write a summary of 
+                              of what I've asked you.
+                            """,
             },
         ],
-        response_model=Agent,
+        response_model=AgentLikeEntity,
     )
 
     logger.debug(json.dumps(response.model_dump(), indent=2))

@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - '**'  # Match any branch
-  pull_request:
-    branches:
-      - '**'  # Match any branch
 
 jobs:
   lint:

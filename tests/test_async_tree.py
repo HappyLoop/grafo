@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from grafo.trees import AsyncTreeExecutor, Node, PickerNode, UnionNode
-from grafo.logger import logger
+from grafo._internal import logger
 
 
 # Auxiliary functions

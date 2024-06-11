@@ -5,7 +5,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("grafo")
 
 formatter = logging.Formatter(
-    "\033[92m%(levelname)s\033[0m (%(asctime)s) %(message)s", datefmt="%H:%M:%S"
+    "\033[92m%(levelname)s\033[0m\t(%(asctime)s) %(message)s", datefmt="%H:%M:%S"
 )
 
 handler = logging.StreamHandler()

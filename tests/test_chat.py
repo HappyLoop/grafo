@@ -6,7 +6,7 @@ from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from grafo.interpreters import LLM, OpenAIHandler
-from grafo.logger import logger
+from grafo._internal import logger
 
 
 class Message(BaseModel):

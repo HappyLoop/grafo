@@ -51,7 +51,7 @@ async def mockup_coroutine(name):
     """
     Example coroutine function that simulates a task that takes 1 second to complete.
     """
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(1)
     logger.debug(f"{name} executed")
     return f"{name} result"
 
@@ -235,3 +235,6 @@ async def test_error_quit_tree():
     nodes_uuids = [root_node.uuid, child_node1.uuid]
     assert all(node_uuid in result.keys() for node_uuid in nodes_uuids)
     logger.debug(result)
+
+
+asyncio.run(test_with_picker_node())

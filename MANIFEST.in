@@ -1,0 +1,37 @@
+# Include the essential files
+include LICENSE.txt
+include README.md
+include requirements.txt
+include setup.py
+
+# Include all Python files in the main directories
+recursive-include grafo *.py
+recursive-include tests *.py
+
+# Exclude unnecessary directories and files
+exclude .gitignore
+exclude .vscode/*
+exclude .venv/*
+exclude .pytest_cache/*
+recursive-exclude grafo/__pycache__ *
+recursive-exclude tests/__pycache__ *
+# Include the essential files
+include LICENSE.txt
+include README.md
+include requirements.txt
+include setup.py
+
+# Include all Python files in the main directories
+recursive-include grafo *.py
+recursive-include tests *.py
+
+# Exclude unnecessary directories and files
+exclude .gitignore
+exclude .vscode/*
+exclude .venv/*
+exclude .pytest_cache/*
+exclude push-all.sh
+exclude grafo.egg-info/*
+recursive-exclude grafo/__pycache__ *
+recursive-exclude tests/__pycache__ *
+recursive-exclude grafo.egg-info *

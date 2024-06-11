@@ -1,5 +1,8 @@
+import asyncio
 import json
+import logging
 
+from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from grafo.interpreters import LLM, OpenAIHandler
@@ -21,10 +24,19 @@ class Message(BaseModel):
     )
 
 
-def test_chat():
+@traceable(name="test-chat")
+async def test_chat():
     """
     Summarize a conversation between the user and an AI.
     """
+    # disable loggers
+    logging.getLogger("instructor").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("langsmith").setLevel(logging.WARNING)
 
     openai = LLM[
         OpenAIHandler
@@ -38,10 +50,7 @@ def test_chat():
             messages=[
                 {
                     "role": "system",
-                    "content": f"""You are a helpful assistant. Keep the conversation going
-                                  by asking if the user wants to know more about something
-                                  you mentioned. The conversation so far: {context}.
-                               """,
+                    "content": f"You are a helpful assistant. Keep the conversation going by asking if the user wants to know more about something you mentioned. The conversation so far: {context}",
                 },
                 {
                     "role": "user",
@@ -57,3 +66,6 @@ def test_chat():
         if response.is_done:
             print(context)
             break
+
+
+asyncio.run(test_chat())

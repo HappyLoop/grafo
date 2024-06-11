@@ -2,13 +2,36 @@
 A simple library for building runnable tree structures. Trees are built using Nodes, which
 contain code to be run.
 
-Based on `asyncio` & `instructor`!
+Use:
+
+```
+# Declare your nodes
+root_node = Node(...)
+child_node1 = Node(...)
+child_node2 = Node(...)
+grandchild_node1 = Node(...)
+
+# Set the layout
+nodes = {
+    root_node: {
+        child_node1: None,
+        child_node2: [grandchild_node1],
+    }
+}
+
+# Use the '|' operator to connect the nodes
+executor = AsyncTreeExecutor(logger=logger)
+tree = executor | nodes
+result = await tree.run()
+```
+
+Powered by `asyncio` & `instructor`!
 
 - `asyncio`: https://docs.python.org/3/library/asyncio.html
 - `instructor`: https://python.useinstructor.com/
 
 ## How ##
-- We have a tree of interconected `Nodes` and an `asyncio.Queue()`
+- You have a tree of interconected `Nodes` and an `asyncio.Queue()`
 - Upon each Node's execution, it queues its children up next
 - Workers stop when they find a `None` in the queue
 - ⚠️ Be careful with UnionNodes, they can cause invisible deadlocks. ⚠️

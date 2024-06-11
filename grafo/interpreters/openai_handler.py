@@ -2,9 +2,11 @@ import os
 from typing import Literal, Optional
 
 import instructor
-from openai import OpenAI
+from langsmith import traceable
+from langsmith.wrappers import wrap_openai
+from openai import AsyncOpenAI, OpenAI
 
-from .base import BaseLLM
+from grafo.interpreters.base import BaseLLM
 
 
 class OpenAIHandler(BaseLLM):
@@ -17,18 +19,73 @@ class OpenAIHandler(BaseLLM):
     ):
         super().__init__()
 
-        self.client = instructor.from_openai(client=OpenAI())
+        # self.client = instructor.from_openai(client=OpenAI())
         self.model = os.getenv("OPENAI_MODEL") or model
         self.temperature = temperature
 
-    def send(self, messages: list, response_model, model: Optional[str] = "gpt-4o"):
+        self._langsmith = True
+        if os.getenv("LANGCHAIN_API_KEY") is None:
+            self._langsmith = False
+
+    @property
+    def langsmith(self):
+        return self._langsmith
+
+    def send(
+        self,
+        messages: list,
+        response_model,
+        model: Optional[str] = "gpt-4o",
+        max_retries: int = 3,
+    ):
         """
         Send data to the model.
         """
-        return self.client.chat.completions.create(
-            model=model, messages=messages, response_model=response_model
+        if self.langsmith:
+            client = wrap_openai(OpenAI())
+        else:
+            client = OpenAI()
+
+        client = instructor.from_openai(
+            client=client, mode=instructor.Mode.TOOLS
+        )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
+
+        return client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_model=response_model,
+            max_retries=max_retries,
         )
 
+    @traceable(name="send-async")
+    async def asend(
+        self,
+        messages: list,
+        response_model,
+        model: Optional[str] = "gpt-4o",
+        max_retries: int = 3,
+    ):
+        """
+        Sends data to the model asyncronously.
+        """
+        if self.langsmith:
+            client = wrap_openai(AsyncOpenAI())
+        else:
+            client = AsyncOpenAI()
+
+        client = instructor.from_openai(
+            client=client, mode=instructor.Mode.TOOLS
+        )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
+
+        return await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_model=response_model,
+            max_retries=max_retries,
+        )
+
+    ################################################################################
+    # Beta
     def create__assistant(
         self,
         client: OpenAI,
@@ -80,3 +137,5 @@ class OpenAIHandler(BaseLLM):
             "type": "image_file",
             "image_file": {"file_id": new_file.id},
         }
+
+    #############################################################################

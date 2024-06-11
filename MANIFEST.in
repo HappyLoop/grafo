@@ -9,6 +9,7 @@ recursive-include grafo *.py
 recursive-include tests *.py
 
 # Exclude unnecessary directories and files
+exclude .github/*
 exclude .gitignore
 exclude .vscode/*
 exclude .venv/*

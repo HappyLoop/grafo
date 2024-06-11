@@ -1,4 +1,13 @@
-from setuptools import setup, find_packages
+import os
+
+from setuptools import find_packages, setup
+
+
+current_dir = os.path.abspath(os.path.dirname(__file__))
+readme_path = os.path.join(current_dir, "README.md")
+
+with open(readme_path, encoding="utf-8") as f:
+    long_description = f.read()
 
 with open("README.md", encoding="utf-8") as f:
     long_description = f.read()

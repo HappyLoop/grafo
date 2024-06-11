@@ -18,7 +18,7 @@ recursive-exclude grafo/__pycache__ *
 recursive-exclude tests/__pycache__ *
 # Include the essential files
 include LICENSE.txt
-include README.md
+include readme.md
 include requirements.txt
 include setup.py
 

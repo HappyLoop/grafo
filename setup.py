@@ -1,20 +1,11 @@
-import os
+from setuptools import setup, find_packages
 
-from setuptools import find_packages, setup
-
-
-current_dir = os.path.abspath(os.path.dirname(__file__))
-readme_path = os.path.join(current_dir, "README.md")
-
-with open(readme_path, encoding="utf-8") as f:
-    long_description = f.read()
-
-with open("README.md", encoding="utf-8") as f:
+with open("./readme.md", encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
     name="grafo",
-    version="0.1.2",
+    version="0.1.1",
     description="A library for building runnable asynchronous trees",
     long_description=long_description,
     long_description_content_type="text/markdown",

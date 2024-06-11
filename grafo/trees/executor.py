@@ -24,12 +24,15 @@ class AsyncTreeExecutor:
 
     def __init__(
         self,
+        name: Optional[str] = None,
         root: Optional[Node] = None,
         num_workers: int = 1,
         logger: Logger | None = None,
         cutoff_branch_on_error: bool = False,
         quit_tree_on_error: bool = False,
     ):
+        self._name = name
+
         self._root = root
         self._queue = asyncio.Queue()
         self._num_workers = num_workers
@@ -43,6 +46,10 @@ class AsyncTreeExecutor:
 
         self._graceful_stop_flag = False
         self._graceful_stop_nodes = set()
+
+    @property
+    def name(self):
+        return self._name
 
     @property
     def root(self):
@@ -279,6 +286,14 @@ class AsyncTreeExecutor:
         workers = [
             asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
         ]
+
+        if len(workers) == 0:
+            raise ValueError("No workers were created.")
+
+        if self.logger:
+            self.logger.debug(
+                f"Running tree{' {}'.format(self.name) if self.name else ''}..."
+            )
 
         await self._queue.join()
         await self.__stop_all_workers()

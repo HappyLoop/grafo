@@ -1,0 +1,28 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - '**'  # Match any branch
+  pull_request:
+    branches:
+      - '**'  # Match any branch
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'  # Specify the Python version you need
+
+    - name: Install Ruff
+      run: pip install ruff
+
+    - name: Run Ruff
+      run: ruff .  # Adjust the command and path as needed

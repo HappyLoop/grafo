@@ -30,9 +30,16 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install build
+    - name: Print current working directory
+      run: pwd
+    - name: List contents of current directory
+      run: ls -la
+    - name: List contents of the root directory
+      run: ls -la /
+    - name: List contents of grafo directory
+      run: ls -la grafo
     - name: Build package
-      run: |
-        cd ./Grafo
+      run:
         python -m build
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29

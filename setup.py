@@ -5,7 +5,7 @@ with open("readme.md", encoding="utf-8") as f:
 
 setup(
     name="grafo",
-    version="0.1.4",
+    version="0.1.5",
     description="A library for building runnable asynchronous trees",
     long_description=long_description,
     long_description_content_type="text/markdown",

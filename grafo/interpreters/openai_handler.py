@@ -19,7 +19,6 @@ class OpenAIHandler(BaseLLM):
     ):
         super().__init__()
 
-        # self.client = instructor.from_openai(client=OpenAI())
         self.model = os.getenv("OPENAI_MODEL") or model
         self.temperature = temperature
 
@@ -47,7 +46,7 @@ class OpenAIHandler(BaseLLM):
             client = OpenAI()
 
         client = instructor.from_openai(
-            client=client, mode=instructor.Mode.TOOLS
+            client=client, mode=instructor.Mode.PARALLEL_TOOLS
         )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
 
         return client.chat.completions.create(
@@ -55,6 +54,7 @@ class OpenAIHandler(BaseLLM):
             messages=messages,
             response_model=response_model,
             max_retries=max_retries,
+            temperature=self.temperature,
         )
 
     @traceable(name="send-async")
@@ -82,6 +82,7 @@ class OpenAIHandler(BaseLLM):
             messages=messages,
             response_model=response_model,
             max_retries=max_retries,
+            temperature=self.temperature,
         )
 
     ################################################################################

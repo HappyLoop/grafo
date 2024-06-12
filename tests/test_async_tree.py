@@ -237,4 +237,4 @@ async def test_error_quit_tree():
     logger.debug(result)
 
 
-asyncio.run(test_with_picker_node())
+asyncio.run(test_with_union_node())

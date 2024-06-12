@@ -11,7 +11,7 @@ setup(
     long_description_content_type="text/markdown",
     author="HappyLoop @paulomtts",
     author_email="dev@happyloop.com",
-    url="https://github.com/HappyLoop/Backend",
+    url="https://github.com/HappyLoop/grafo",
     packages=find_packages(include=["grafo", "grafo.*"]),
     install_requires=["openai", "instructor", "langsmith"],
     python_requires=">=3.6",

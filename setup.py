@@ -5,13 +5,13 @@ with open("readme.md", encoding="utf-8") as f:
 
 setup(
     name="grafo",
-    version="0.1.3",
+    version="0.1.4",
     description="A library for building runnable asynchronous trees",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Paulo Mattos",
-    author_email="paulomtts@outlook.com",
-    url="https://github.com/paulomtts/grafo",
+    author="HappyLoop @paulomtts",
+    author_email="dev@happyloop.com",
+    url="https://github.com/HappyLoop/Backend",
     packages=find_packages(include=["grafo", "grafo.*"]),
     install_requires=["openai", "instructor", "langsmith"],
     python_requires=">=3.6",

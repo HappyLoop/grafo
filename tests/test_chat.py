@@ -8,6 +8,15 @@ from pydantic import BaseModel, Field
 from grafo.interpreters import LLM, OpenAIHandler
 from grafo._internal import logger
 
+# disable loggers
+logging.getLogger("instructor").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("langsmith").setLevel(logging.WARNING)
+
 
 class Message(BaseModel):
     """
@@ -29,14 +38,6 @@ async def test_chat():
     """
     Summarize a conversation between the user and an AI.
     """
-    # disable loggers
-    logging.getLogger("instructor").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("openai").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("langsmith").setLevel(logging.WARNING)
 
     openai = LLM[
         OpenAIHandler

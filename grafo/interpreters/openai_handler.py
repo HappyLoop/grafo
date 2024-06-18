@@ -46,7 +46,7 @@ class OpenAIHandler(BaseLLM):
             client = OpenAI()
 
         client = instructor.from_openai(
-            client=client, mode=instructor.Mode.PARALLEL_TOOLS
+            client=client, mode=instructor.Mode.TOOLS
         )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
 
         return client.chat.completions.create(

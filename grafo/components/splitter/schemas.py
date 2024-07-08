@@ -7,40 +7,40 @@ class Task(BaseModel):
     An unit of work to be performed.
     """
 
-    priority: Optional[int] = Field(
-        0,
-        description="A number representing the priority order of the task. Zero-indexed.",
-    )
     description: str = Field(
-        ..., description="Your description of the task. Be descriptive."
+        ...,
+        description="A description of the task.",
+    )
+    additional_info: Optional[list[str]] = Field(
+        None,
+        description="A list of questions requesting additional information necessary to complete the task.",
     )
     tool: Optional[str] = Field(
         None,
         description="The name of the tool to use. Only set if this task is not a request for more information.",
     )
-    quote: str = Field(
-        ..., description="A quote from the user input that describes the task."
+    essential: bool = Field(
+        False,
+        description="Whether the task is essential to the main goal.",
     )
 
 
 class TaskGroup(BaseModel):
     """
-    Build a list of tasks from the user input. I necessary, include tasks
-    where you ask the user for any additional information required to
-    complete the task. Example:
-
-    User: 'summarize the provided document and send an email'
-    Tasks: [
-        'Summarize the provided document',
-        'Ask the user for the address',
-        'Ask the user for the subject',
-        'Ask the user for the body',
-        'Ask the user for the recipient',
-        'Send an email',
-    ]
+    Build a list of tasks from the user input. Rules:
+    - Be sure to fill additional_info with questions that may be necessary to complete each task. E.g., "What is the name of the cake?"
+    - The main goal is a short description of the user's main objective. It may not encompass all tasks.
     """
 
-    tasks: list[Task] = Field(..., description="The list of tasks.")
+    tasks: Optional[list[Task]] = Field(None, description="The list of tasks.")
     chain_of_thought: str = Field(
         ..., description="The chain of thought behind the tasks."
+    )
+    main_goal: str = Field(
+        ...,
+        description="A concise description of the tasks directly related to the main goal of the user's input.",
+    )
+    secondary_goals: Optional[list[str]] = Field(
+        None,
+        description="A list of secondary goals that are not directly related to the main goal.",
     )

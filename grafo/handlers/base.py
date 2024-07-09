@@ -7,16 +7,16 @@ T = TypeVar("T", bound="BaseLLM")
 class BaseLLM(ABC):
     """Base class for LLM models."""
 
-    _instantiation_allowed = False
+    _allow_instantiation = False
 
     def __init__(self) -> None:
-        if not self._instantiation_allowed:
+        if not self._allow_instantiation:
             raise TypeError(
                 f"{self.__class__.__name__} cannot be instantiated directly"
             )
 
     @abstractmethod
-    def send(self, data: str) -> None:
+    def send(self, messages: list, response_model, model: str, max_retries: int):
         """Send data to the model."""
         pass
 
@@ -38,14 +38,12 @@ class LLM(Generic[T]):
         return cls
 
     def _create_handler(self, *args, **kwargs) -> T:
-        if not hasattr(self.cls, "_instantiation_allowed"):
-            raise TypeError(
-                f"{self.cls.__name__} cannot be instantiated directly by LLM."
-            )
+        if not issubclass(self.cls, BaseLLM):
+            raise TypeError(f"{self.cls.__name__} is not a subclass of BaseLLM")
 
-        self.cls._instantiation_allowed = True
+        self.cls._allow_instantiation = True
         try:
             instance = self.cls(*args, **kwargs)
         finally:
-            self.cls._instantiation_allowed = False
+            self.cls._allow_instantiation = False
         return instance

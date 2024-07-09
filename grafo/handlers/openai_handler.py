@@ -6,7 +6,7 @@ from langsmith import traceable
 from langsmith.wrappers import wrap_openai
 from openai import AsyncOpenAI, OpenAI
 
-from grafo.interpreters.base import BaseLLM
+from grafo.handlers.base import BaseLLM
 
 
 class OpenAIHandler(BaseLLM):
@@ -30,6 +30,7 @@ class OpenAIHandler(BaseLLM):
     def langsmith(self):
         return self._langsmith
 
+    @traceable(name="send")
     def send(
         self,
         messages: list,
@@ -46,7 +47,7 @@ class OpenAIHandler(BaseLLM):
             client = OpenAI()
 
         client = instructor.from_openai(
-            client=client, mode=instructor.Mode.PARALLEL_TOOLS
+            client=client, mode=instructor.Mode.TOOLS
         )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
 
         return client.chat.completions.create(

@@ -5,7 +5,7 @@ from typing import Optional
 import pytest
 from pydantic import BaseModel, Field
 
-from grafo.interpreters import LLM, OpenAIHandler
+from grafo.handlers import LLM, OpenAIHandler
 from grafo._internal import logger
 
 

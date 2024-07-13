@@ -23,11 +23,11 @@ async def test_split_tasks():
         email_sender
         """,
     )
-    group = manager.group
-    assert group is not None
-    assert group.tasks is not None
-    assert [task.layer for task in group.tasks] == [0, 0, 0, 1, 2, 3]
-    assert [task.essential for task in group.tasks] == [
+    user_request = manager.user_request
+    assert user_request is not None
+    assert user_request.tasks is not None
+    assert [task.layer for task in user_request.tasks] == [0, 0, 0, 1, 2, 3]
+    assert [task.essential for task in user_request.tasks] == [
         True,
         True,
         False,
@@ -35,13 +35,13 @@ async def test_split_tasks():
         True,
         True,
     ]
-    assert len(group.clarifications) == 2
+    assert len(user_request.clarifications) == 2
 
-    for task in group.tasks:
+    for task in user_request.tasks:
         print(task)
-    print("\n\t", group.chain_of_thought)
-    print("\t", group.main_goal)
-    print("\t", group.clarifications)
+    print("\n\t", user_request.chain_of_thought)
+    print("\t", user_request.main_goal)
+    print("\t", user_request.clarifications)
 
 
 asyncio.run(test_split_tasks())

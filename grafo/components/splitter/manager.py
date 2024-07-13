@@ -13,15 +13,15 @@ class TaskManager:
     def __str__(self) -> str:
         if not hasattr(self, "user_request"):
             return "TaskManager(None)"
-        return f"TaskManager({self.group.tasks})"
+        return f"TaskManager({self.user_request.tasks})"
 
     @property
     def llm(self):
         return self._llm
 
     @property
-    def group(self):
-        return self._group
+    def user_request(self):
+        return self._user_request
 
     async def split_tasks(
         self,
@@ -31,7 +31,7 @@ class TaskManager:
         """
         Create a UserRequest object from a user input. It includes a list of tasks and clarifications.
         """
-        self._group: UserRequest = await self.llm.handler.asend(
+        self._user_request: UserRequest = await self.llm.handler.asend(
             messages=[
                 {
                     "role": "system",

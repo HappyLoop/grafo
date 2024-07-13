@@ -1,17 +1,17 @@
 from grafo.handlers import LLM
-from grafo.components.splitter.schemas import TaskGroup
+from grafo.components.splitter.schemas import UserRequest
 
 
 class TaskManager:
     """
-    Splits tasks.
+    Manages the state of Tasks within a UserRequest.
     """
 
     def __init__(self, llm: LLM):
         self._llm = llm
 
     def __str__(self) -> str:
-        if not hasattr(self, "group"):
+        if not hasattr(self, "user_request"):
             return "TaskManager(None)"
         return f"TaskManager({self.group.tasks})"
 
@@ -28,7 +28,10 @@ class TaskManager:
         input: str,
         tools_description: str,
     ):
-        self._group: TaskGroup = await self.llm.handler.asend(
+        """
+        Create a UserRequest object from a user input. It includes a list of tasks and clarifications.
+        """
+        self._group: UserRequest = await self.llm.handler.asend(
             messages=[
                 {
                     "role": "system",
@@ -39,5 +42,5 @@ class TaskManager:
                     "content": input,
                 },
             ],
-            response_model=TaskGroup,
+            response_model=UserRequest,
         )

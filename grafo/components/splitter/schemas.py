@@ -45,7 +45,7 @@ class TaskClarification(BaseModel):
     question: str = Field(..., description="The clarification needed.")
 
 
-class TaskGroup(BaseModel):
+class UserRequest(BaseModel):
     """
     A list of tasks from the user input. Rules:
     - Be sure to fill additional_info with questions that may be necessary to complete each task. E.g., "What is the name of the cake?"

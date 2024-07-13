@@ -38,8 +38,8 @@ class Brain:
         The Brain's pipeline.
         """
         # 1. Get the sub-prompt & split the tasks
-        tools_decription = self.tool_manager.get_tool_descriptions()
-        await self.task_manager.split_tasks(input, tools_decription)
+        tools_decriptions = self.tool_manager.get_descriptions()
+        await self.task_manager.split_tasks(input, tools_decriptions)
 
         # 2. Perform clarifications (RAG or ask user)
 

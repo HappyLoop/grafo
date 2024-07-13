@@ -4,6 +4,7 @@ from collections import namedtuple
 
 from grafo.handlers.base import LLM
 
+
 ToolObject = namedtuple("ToolObject", ["model", "fn"])
 
 
@@ -37,9 +38,9 @@ class ToolManager:
         """
         return self.tool_map.get(tool_name)
 
-    def get_tool_descriptions(self):
+    def get_descriptions(self):
         """
-        Get the descriptions of all tools.
+        Get the descriptions of all tools in a <name>:<description> format.
         """
         sub_prompt = ""
         for name, tool in self.tool_map.items():

@@ -1,5 +1,5 @@
 import os
-from typing import Literal, Optional
+from typing import Optional
 
 import instructor
 from langsmith import traceable
@@ -51,7 +51,7 @@ class OpenAIHandler(BaseLLM):
         )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
 
         return client.chat.completions.create(
-            model=model,
+            model=self.model or model,
             messages=messages,
             response_model=response_model,
             max_retries=max_retries,
@@ -79,65 +79,9 @@ class OpenAIHandler(BaseLLM):
         )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
 
         return await client.chat.completions.create(
-            model=model,
+            model=self.model or model,
             messages=messages,
             response_model=response_model,
             max_retries=max_retries,
             temperature=self.temperature,
         )
-
-    ################################################################################
-    # Beta
-    def create__assistant(
-        self,
-        client: OpenAI,
-        name: str,
-        instructions: str,
-        tools: list,
-        tool_resources: dict,
-        model: str = "gpt-4o",
-        **kwargs,
-    ):
-        """
-        Create an assistant.
-        """
-        return client.beta.assistants.create(
-            name=name,
-            instructions=instructions,
-            tools=tools,
-            tool_resources=tool_resources,  # type: ignore
-            model=model,
-            **kwargs,
-        )
-
-    def create_thread(self, client: OpenAI):
-        """
-        Create a thread.
-        """
-        return client.beta.threads.create()
-
-    def create_message(
-        self,
-        client: OpenAI,
-        thread_id: str,
-        role: Literal["user", "assistant"],
-        content: str,
-    ):
-        """
-        Create a message.
-        """
-        return client.beta.threads.messages.create(
-            thread_id=thread_id, role=role, content=content
-        )
-
-    def create_file(self, client: OpenAI, file: str):
-        """
-        Create a file and returns a content object.
-        """
-        new_file = client.files.create(file=open(file, "rb"), purpose="vision")
-        return {
-            "type": "image_file",
-            "image_file": {"file_id": new_file.id},
-        }
-
-    #############################################################################

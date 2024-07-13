@@ -1,4 +1,3 @@
-import asyncio
 import json
 from typing import Optional
 
@@ -159,6 +158,3 @@ async def test_agent_with_tools():
     )
 
     logger.debug(json.dumps(response.model_dump(), indent=2))
-
-
-asyncio.run(test_agent_with_tools())

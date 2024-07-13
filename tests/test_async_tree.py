@@ -235,6 +235,3 @@ async def test_error_quit_tree():
     nodes_uuids = [root_node.uuid, child_node1.uuid]
     assert all(node_uuid in result.keys() for node_uuid in nodes_uuids)
     logger.debug(result)
-
-
-asyncio.run(test_with_union_node())

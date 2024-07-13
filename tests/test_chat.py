@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 
@@ -67,6 +66,3 @@ async def test_chat():
         if response.is_done:
             print(context)
             break
-
-
-asyncio.run(test_chat())

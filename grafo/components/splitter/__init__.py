@@ -1,4 +1,4 @@
-from .splitter import split_tasks
+from .manager import TaskManager
 from .schemas import Task, TaskGroup
 
-__all__ = ["split_tasks", "Task", "TaskGroup"]
+__all__ = ["TaskManager", "Task", "TaskGroup"]

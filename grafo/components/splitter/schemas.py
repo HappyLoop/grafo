@@ -1,5 +1,5 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Task(BaseModel):
@@ -8,6 +8,12 @@ class Task(BaseModel):
     - Tasks that can be performed in parallel should have the same layer.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    id: int = Field(
+        ...,
+        description="The ID of the task.",
+    )
     description: str = Field(
         ...,
         description="A description of the task.",
@@ -24,6 +30,19 @@ class Task(BaseModel):
         0,
         description="The layer of the task within a dependency tree. Lower numbers are executed first. Zero-indexed.",
     )
+    result: Union[BaseModel, Exception, None] = Field(
+        None,
+        description="The result of the task.",
+    )
+
+
+class TaskClarification(BaseModel):
+    """
+    A request for more information about a task.
+    """
+
+    task_id: int = Field(..., description="The ID of the task.")
+    question: str = Field(..., description="The clarification needed.")
 
 
 class TaskGroup(BaseModel):
@@ -33,28 +52,26 @@ class TaskGroup(BaseModel):
     - The main goal is a short description of the user's main objective. It may not encompass all tasks.
     """
 
-    tasks: Optional[list[Task]] = Field(None, description="The list of tasks.")
+    tasks: list[Task] = Field(..., description="The list of tasks.")
     chain_of_thought: str = Field(
         ..., description="The chain of thought behind the tasks."
     )
     main_goal: str = Field(
         ...,
         description="A concise description of the tasks directly related to the main goal of the user's input.",
-        title="Main Goal",
     )
-    primary_task: Task = Field(
-        None,
-        description="The most important task to be performed. It is likely that its completion will achieve the final steps of the Main Goal.",
+    clarifications: list[TaskClarification] = (
+        Field(  # TODO: what if no additional info is needed?
+            ...,
+            description="A list of questions requesting contextual information useful to the completion of the tasks.",
+        )
     )
-    # secondary_goals: Optional[list[str]] = Field(
-    #     None,
-    #     description="A list of descriptions of tasks that are not directly related to the main goal. They are not necessary to achieve the main goal.",
-    # )
-    secondary_tasks: Optional[list[Task]] = Field(
-        None,
-        description="A list of tasks whose completion is not present in the tree of dependencies of the most_important_task. They are not necessary to achieve the main goal.",
-    )
-    additional_info: Optional[list[str]] = Field(
-        None,
-        description="A list of questions requesting contextual information useful to the completion of the tasks.",
-    )
+
+    @model_validator(mode="after")
+    def perform_validations(self):
+        task_ids = [task.id for task in self.tasks]
+        if len(set(task_ids)) != len(task_ids):
+            raise ValueError("Task IDs must be unique.")
+        if not all(cl.task_id in task_ids for cl in self.clarifications):
+            raise ValueError("All tasks must be clarified.")
+        return self

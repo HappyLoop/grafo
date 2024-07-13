@@ -1,17 +1,20 @@
-from grafo.handlers import LLM, OpenAIHandler
-from grafo.components.splitter import split_tasks, TaskGroup
+import asyncio
+import pytest
 
+from grafo.components.splitter import TaskManager
+from grafo.handlers import LLM, OpenAIHandler
 
 openai = LLM[OpenAIHandler]()
 
 
-def test_split_tasks():
-    group: TaskGroup = split_tasks(
-        openai,
+@pytest.mark.asyncio
+async def test_split_tasks():
+    manager = TaskManager(openai)
+    await manager.split_tasks(
         """
         Write a recipe for a cake, find a fitting occasion to serve it, research about orca whales, bake the cake, take a picture of the it and send to paulo's email.
-
-        You have the following tools:
+        """,
+        """
         recipe_writer
         occasion_finder
         url_finder
@@ -20,16 +23,25 @@ def test_split_tasks():
         email_sender
         """,
     )
+    group = manager.group
+    assert group is not None
+    assert group.tasks is not None
+    assert [task.layer for task in group.tasks] == [0, 0, 0, 1, 2, 3]
+    assert [task.essential for task in group.tasks] == [
+        True,
+        True,
+        False,
+        True,
+        True,
+        True,
+    ]
+    assert len(group.clarifications) == 2
 
-    for task in group.tasks or []:
+    for task in group.tasks:
         print(task)
-
     print("\n\t", group.chain_of_thought)
     print("\t", group.main_goal)
-    # print("\t", group.secondary_goals)
-    print("\t", group.additional_info)
-    print("\t", group.primary_task)
-    print("\t", group.secondary_tasks)
+    print("\t", group.clarifications)
 
 
-test_split_tasks()
+asyncio.run(test_split_tasks())

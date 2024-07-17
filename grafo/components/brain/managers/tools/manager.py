@@ -16,8 +16,7 @@ class ToolManager:
     def __init__(self, llm: LLM, tools: dict[BaseModel, Optional[Callable]]):
         self._llm = llm
         self._tool_map = {
-            model.__class__.__name__: ToolObject(model, fn)
-            for model, fn in tools.items()
+            model.__name__: ToolObject(model, fn) for model, fn in tools.items()
         }
 
     def __str__(self):

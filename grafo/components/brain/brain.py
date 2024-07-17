@@ -8,8 +8,7 @@ from typing import Callable, Optional
 from pydantic import BaseModel
 from grafo.handlers.base import LLM
 
-from ..splitter import TaskManager
-from ..tools import ToolManager
+from grafo.components.brain.managers import TaskManager, ToolManager
 
 
 class Brain:
@@ -42,6 +41,8 @@ class Brain:
         await self.task_manager.split_tasks(input, tools_decriptions)
 
         # 2. Perform clarifications (RAG or ask user)
+        # a) Clarifications always search a knowledge base first (if available)
+        # b) If no knowledge base is available, or the information is not found, ask the user
 
         # 3. Add clarification context to task prompt
 

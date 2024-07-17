@@ -1,5 +1,5 @@
 from grafo.handlers import LLM
-from grafo.components.splitter.schemas import UserRequest
+from grafo.components.brain.managers.splitter.schemas import UserRequest
 
 
 class TaskManager:

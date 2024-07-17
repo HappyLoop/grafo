@@ -13,3 +13,23 @@ class CakeRecipeWriterTool(BaseModel):
     steps: list[str] = Field(
         ..., title="Steps", description="The steps to bake the cake"
     )
+
+
+class OccasionFinderTool(BaseModel):
+    """
+    This tool is used to find a fitting occasion for a cake.
+    """
+
+    occasion: str = Field(
+        ..., title="Occasion", description="The occasion to serve the cake"
+    )
+
+
+class ResearchTool(BaseModel):
+    """
+    This tool is used to research about orca whales.
+    """
+
+    research: str = Field(
+        ..., title="Research", description="The results of the research"
+    )

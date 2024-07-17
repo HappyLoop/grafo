@@ -1,7 +1,6 @@
-import asyncio
 import pytest
 
-from grafo.components.splitter import TaskManager
+from grafo.components.brain.managers import TaskManager
 from grafo.handlers import LLM, OpenAIHandler
 
 openai = LLM[OpenAIHandler]()
@@ -42,6 +41,3 @@ async def test_split_tasks():
     print("\n\t", user_request.chain_of_thought)
     print("\t", user_request.main_goal)
     print("\t", user_request.clarifications)
-
-
-asyncio.run(test_split_tasks())

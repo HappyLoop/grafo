@@ -1,20 +1,8 @@
 import json
-import logging
-
-from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from grafo.handlers import LLM, OpenAIHandler
 from grafo._internal import logger
-
-# disable loggers
-logging.getLogger("instructor").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("asyncio").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("openai").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("langsmith").setLevel(logging.WARNING)
 
 
 class Message(BaseModel):
@@ -32,7 +20,6 @@ class Message(BaseModel):
     )
 
 
-@traceable(name="test-chat")
 async def test_chat():
     """
     Summarize a conversation between the user and an AI.
@@ -61,7 +48,6 @@ async def test_chat():
         )
 
         logger.debug(json.dumps(response.model_dump(), indent=2))
-
         context += "\n\n" + response.summary
         if response.is_done:
             print(context)

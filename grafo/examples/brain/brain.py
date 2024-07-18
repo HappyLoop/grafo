@@ -13,7 +13,7 @@ class Brain:
         tools_manager: dict[Type[BaseModel], Optional[Callable]],
         user_clarification: bool = False,  # ! to be implemented in the future
         db_handler: Optional[Callable] = None,  # ! to be implemented in the future
-        knowledge_manager: Optional[
+        context_pool_manager: Optional[
             dict[Type[BaseModel], Optional[Callable]]
         ] = None,  # ! to be implemented in the future, can use db handler
     ):

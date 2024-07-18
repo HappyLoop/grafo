@@ -1,15 +1,21 @@
-from typing import Any, Optional, Type
+import os
+from typing import Any, Optional, Sequence, Type, TypeVar
 
 from pydantic import BaseModel
 from sqlmodel import Field, Session, SQLModel, create_engine
 from sqlmodel import select as sqlmodel_select
 
-from examples.brain.services.db_service import BaseMultiModalDB
+from grafo.examples.brain.services.db_service import BaseMultiModalDB
 
 
-class VectorComparison(BaseModel):
+T = TypeVar("T", bound=SQLModel)
+
+
+class VectorSearch(BaseModel):
     field: str = Field(..., description="The field to compare the input to.")
-    input: list[int] = Field(..., description="The input vector.")
+    embedding: list[float] = Field(
+        ..., description="The embedding to compare results to."
+    )
     threshold: Optional[float] = Field(
         None, description="The threshold for the comparison."
     )
@@ -17,18 +23,20 @@ class VectorComparison(BaseModel):
 
 
 class PostgresHandler(BaseMultiModalDB):
-    def __init__(self, db_url: str):
-        self.engine = create_engine(db_url)
-        SQLModel.metadata.create_all(self.engine)
+    def __init__(self, db_url: Optional[str] = None):
+        connection_string = db_url or os.getenv("DB_URL")
+        if not connection_string:
+            raise ValueError("No connection string provided.")
+        self.engine = create_engine(connection_string)
 
     def select(
         self,
-        model: Type[SQLModel],
+        model: Type[T],
         where: Optional[dict[str, list[str]]] = None,
         group_by: Optional[str] = None,
         order_by: Optional[str] = None,
         limit: Optional[int] = None,
-    ):
+    ) -> Sequence[T]:
         "Selects entries from the database."
         with Session(self.engine) as session:
             statement = sqlmodel_select(model)
@@ -46,15 +54,15 @@ class PostgresHandler(BaseMultiModalDB):
                 statement = statement.limit(limit)
             return session.exec(statement).all()
 
-    def insert(self, data: list[Type[SQLModel]]):
+    def insert(self, data: list[Type[T]]) -> list[Type[T]]:
         "Adds entries to the database."
         return self.upsert(data)
 
-    def update(self, data: list[Type[SQLModel]]):
+    def update(self, data: list[Type[T]]) -> list[Type[T]]:
         "Updates data in the database."
         return self.upsert(data)
 
-    def upsert(self, data: list[Type[SQLModel]]):
+    def upsert(self, data: list[Type[T]]) -> list[Type[T]]:
         "Inserts or updates entries to the database."
         with Session(self.engine) as session:
             session.add_all(data)
@@ -63,7 +71,7 @@ class PostgresHandler(BaseMultiModalDB):
                 session.refresh(item)
             return data
 
-    def delete(self, data: list[Type[SQLModel]]):
+    def delete(self, data: list[Type[T]]) -> list[Type[T]]:
         "Deletes entries from the database."
         with Session(self.engine) as session:
             for item in data:
@@ -74,18 +82,25 @@ class PostgresHandler(BaseMultiModalDB):
     def execute(self, statement: Any):
         "Executes a custom SQL statement."
         with Session(self.engine) as session:
-            return session.exec(statement)
+            result = session.exec(statement)
+            session.commit()
+            return result
 
     def select_nearest_neighbours(
-        self, model: Type[SQLModel], vector: VectorComparison
-    ):
+        self, model: Type[T], search: VectorSearch
+    ) -> Sequence[T]:
         "Selects the nearest neighbours to a vector."
         with Session(self.engine) as session:
-            attr = getattr(model, vector.field)
-            comparison = attr.l2_distance(vector.input)
-            if vector.threshold:
-                comparison = attr.l2_distance(vector.input) < vector.threshold
-            statement = sqlmodel_select(comparison)
-            if vector.limit:
-                statement = statement.limit(vector.limit)
+            attr = getattr(model, search.field)
+            statement = sqlmodel_select(model)
+
+            if search.threshold:
+                statement = statement.filter(
+                    attr.cosine_distance(search.embedding) < search.threshold
+                )
+
+            if search.limit:
+                statement = statement.limit(search.limit)
+
+            statement = statement.order_by(attr.cosine_distance(search.embedding))
             return session.exec(statement).all()

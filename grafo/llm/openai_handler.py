@@ -81,3 +81,17 @@ class OpenAIHandler(BaseLLM):
             max_retries=max_retries,
             temperature=self.temperature,
         )
+
+    def create_embedding(self, text: str, model: str = "text-embedding-3-small"):
+        """
+        Get embeddings from the model.
+        """
+        if self.langsmith:
+            client = wrap_openai(OpenAI())
+        else:
+            client = OpenAI()
+
+        return client.embeddings.create(
+            model=model,
+            input=text,
+        )

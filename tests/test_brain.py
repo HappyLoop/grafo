@@ -1,7 +1,7 @@
 from grafo.components.brain import Brain
 from grafo.handlers.llm import OpenAIHandler
 
-from tests.tools import CakeRecipeWriterTool, OccasionFinderTool, ResearchTool
+from tools import CakeRecipeWriterTool, OccasionFinderTool, ResearchTool
 
 
 async def test_pipeline():

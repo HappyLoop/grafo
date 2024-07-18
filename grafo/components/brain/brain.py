@@ -1,10 +1,5 @@
-# Brain:
-# - Has awareness of its tools (ToolManager)
-# - Has access to a knowledge base (RAG)
-# - Has centralizd state (TaskManager)
-# - Can understand inputs and split them into tasks (TaskManager)
-
 from typing import Callable, Optional, Type
+
 from pydantic import BaseModel
 
 from grafo.components.brain.managers import TaskManager, ToolManager
@@ -12,10 +7,16 @@ from grafo.handlers.llm.base import BaseLLM
 
 
 class Brain:
-    def __init__(self, llm: BaseLLM, tools: dict[Type[BaseModel], Optional[Callable]]):
+    def __init__(
+        self,
+        llm: BaseLLM,
+        tools: dict[Type[BaseModel], Optional[Callable]],
+        user_clarification: bool = False,
+    ):
         self._llm = llm
         self._task_manager = TaskManager(llm)
         self._tool_manager = ToolManager(llm, tools)
+        self._user_clarification = user_clarification
 
     def __str__(self) -> str:
         return f"Brain({self._task_manager}, {self._tool_manager})"
@@ -32,7 +33,13 @@ class Brain:
     def tool_manager(self):
         return self._tool_manager
 
-    async def pipeline(self, input: str):
+    @property
+    def user_clarification(self):
+        return self._user_clarification
+
+    async def pipeline(
+        self, input: str
+    ):  # ? Should this be a root node during runtime?
         """
         The Brain's pipeline.
         """

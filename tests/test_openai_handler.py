@@ -1,10 +1,11 @@
 import json
+import os
+import re
 
 import pytest
 from pydantic import BaseModel, Field
 
 from grafo.llm import OpenAIHandler
-from grafo._internal import logger
 
 
 class SQLWriter(BaseModel):
@@ -36,6 +37,14 @@ async def test_openai_handler():
     """
     Test a tool that with a single message sent.
     """
+    SELF_PATH = os.path.dirname(os.path.abspath(__file__))
+    with open(f"{SELF_PATH}/../.vscode/launch.json", "r") as f:
+        content = f.read()
+        content = re.sub(r"//.*?\n|/\*.*?\*/", "", content, flags=re.S)
+        data = json.loads(content)
+        api_key = data["configurations"][0]["env"]["OPENAI_API_KEY"]
+        os.environ["OPENAI_API_KEY"] = api_key
+
     openai = OpenAIHandler()
     response: SQLWriter = openai.send(
         messages=[
@@ -50,5 +59,5 @@ async def test_openai_handler():
         ],
         response_model=SQLWriter,
     )
-    logger.debug(json.dumps(response.model_dump(), indent=2))
+    print(json.dumps(response.model_dump(), indent=2))
     assert response.query == "SELECT id, name FROM users WHERE name LIKE '%John%';"

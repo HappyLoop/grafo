@@ -1,3 +1,7 @@
+import json
+import os
+import re
+
 import pytest
 
 from grafo.examples.brain.services import TaskManager
@@ -6,6 +10,14 @@ from grafo.llm import OpenAIHandler
 
 @pytest.mark.asyncio
 async def test_split_tasks():
+    SELF_PATH = os.path.dirname(os.path.abspath(__file__))
+    with open(f"{SELF_PATH}/../../../../.vscode/launch.json", "r") as f:
+        content = f.read()
+        content = re.sub(r"//.*?\n|/\*.*?\*/", "", content, flags=re.S)
+        data = json.loads(content)
+        api_key = data["configurations"][0]["env"]["OPENAI_API_KEY"]
+        os.environ["OPENAI_API_KEY"] = api_key
+
     openai = OpenAIHandler()
     manager = TaskManager(openai)
     await manager.split_tasks(

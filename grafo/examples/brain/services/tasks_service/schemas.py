@@ -64,7 +64,7 @@ class UserRequest(BaseModel):
     clarifications: list[TaskClarification] = (
         Field(  # TODO: what if no additional info is needed?
             ...,
-            description="A list of questions requesting contextual information useful to the completion of the tasks. These questions can also be used to disambiguate the user's input.",
+            description="A list of questions requesting contextual information essential to the completion of the tasks. These questions can also be used to disambiguate the user's input.",
         )
     )
 

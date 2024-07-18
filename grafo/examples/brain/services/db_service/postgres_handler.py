@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlmodel import Field, Session, SQLModel, create_engine
 from sqlmodel import select as sqlmodel_select
 
-from grafo.examples.brain.services.db_service import BaseMultiModalDB
+from examples.brain.services.db_service import BaseMultiModalDB
 
 
 class VectorComparison(BaseModel):

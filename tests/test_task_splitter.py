@@ -1,6 +1,6 @@
 import pytest
 
-from grafo.components.brain.managers import TaskManager
+from grafo.components import TaskManager
 from grafo.handlers.llm import OpenAIHandler
 
 

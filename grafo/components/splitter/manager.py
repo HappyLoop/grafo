@@ -1,4 +1,4 @@
-from grafo.components.brain.managers.splitter.schemas import UserRequest
+from grafo.components.splitter.schemas import UserRequest
 from grafo.handlers.llm.base import BaseLLM
 
 

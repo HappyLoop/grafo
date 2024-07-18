@@ -2,7 +2,7 @@ from typing import Callable, Optional, Type
 
 from pydantic import BaseModel
 
-from grafo.components.brain.managers import TaskManager, ToolManager
+from grafo.components import TaskManager, ToolManager
 from grafo.handlers.llm.base import BaseLLM
 
 

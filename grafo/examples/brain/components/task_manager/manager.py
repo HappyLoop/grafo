@@ -1,4 +1,4 @@
-from grafo.examples.brain.services.tasks_service import UserRequest
+from grafo.examples.brain.components.task_manager import UserRequest
 from grafo.llm.base import BaseLLM
 
 
@@ -11,9 +11,7 @@ class TaskManager:
         self._llm = llm
 
     def __str__(self) -> str:
-        if not hasattr(self, "user_request"):
-            return "TaskManager(None)"
-        if self.user_request is None:
+        if not hasattr(self, "user_request") or self.user_request is None:
             return "TaskManager(None)"
         return f"TaskManager({self.user_request.tasks})"
 

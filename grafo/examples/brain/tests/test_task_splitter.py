@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from grafo.examples.brain.services import TaskManager
+from grafo.examples.brain.components import TaskManager
 from grafo.llm import OpenAIHandler
 
 

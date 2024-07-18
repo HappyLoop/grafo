@@ -16,12 +16,14 @@ class OpenAIHandler(BaseLLM):
 
     def __init__(
         self,
-        model: Optional[str] = "gpt-4o",
+        model: Optional[str] = None,
         temperature: Optional[int] = 0,
     ):
         super().__init__()
 
-        self.model = os.getenv("OPENAI_MODEL") or model
+        self.model = (
+            model or os.getenv("OPENAI_MODEL", "") or os.getenv("LLM_MODEL", "")
+        )
         self.temperature = temperature
 
         self._langsmith = True
@@ -36,7 +38,7 @@ class OpenAIHandler(BaseLLM):
         self,
         messages: list,
         response_model: Type[T],
-        model: Optional[str] = "gpt-4o",
+        model: Optional[str] = None,
         max_retries: int = 3,
     ) -> T:
         """
@@ -50,7 +52,7 @@ class OpenAIHandler(BaseLLM):
         client = instructor.from_openai(client=client)
 
         return client.chat.completions.create(
-            model=self.model or model,
+            model=self.model or os.getenv("LLM_MODEL"),
             messages=messages,
             response_model=response_model,
             max_retries=max_retries,
@@ -61,7 +63,7 @@ class OpenAIHandler(BaseLLM):
         self,
         messages: list,
         response_model: Type[T],
-        model: Optional[str] = "gpt-4o",
+        model: Optional[str] = None,
         max_retries: int = 3,
     ) -> T:
         """
@@ -75,14 +77,14 @@ class OpenAIHandler(BaseLLM):
         client = instructor.from_openai(client=client)
 
         return await client.chat.completions.create(
-            model=self.model or model,
+            model=self.model or os.getenv("LLM_MODEL"),
             messages=messages,
             response_model=response_model,
             max_retries=max_retries,
             temperature=self.temperature,
         )
 
-    def create_embedding(self, text: str, model: str = "text-embedding-3-small"):
+    def create_embedding(self, text: str, model: Optional[str] = None):
         """
         Get embeddings from the model.
         """
@@ -92,6 +94,6 @@ class OpenAIHandler(BaseLLM):
             client = OpenAI()
 
         return client.embeddings.create(
-            model=model,
+            model=model or os.getenv("EMBEDDING_MODEL", ""),
             input=text,
         )

@@ -1,25 +1,13 @@
 import os
 from typing import Any, Optional, Sequence, Type, TypeVar
 
-from pydantic import BaseModel
-from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel import select as sqlmodel_select
 
-from grafo.examples.brain.services.db_service import BaseMultiModalDB
-
+from grafo.examples.brain.components.db_handler import BaseMultiModalDB
+from grafo.examples.brain.components.db_handler.schemas import VectorSearch
 
 T = TypeVar("T", bound=SQLModel)
-
-
-class VectorSearch(BaseModel):
-    field: str = Field(..., description="The field to compare the input to.")
-    embedding: list[float] = Field(
-        ..., description="The embedding to compare results to."
-    )
-    threshold: Optional[float] = Field(
-        None, description="The threshold for the comparison."
-    )
-    limit: Optional[int] = Field(None, description="The limit for the query.")
 
 
 class PostgresHandler(BaseMultiModalDB):

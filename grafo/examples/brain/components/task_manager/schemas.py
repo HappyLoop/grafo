@@ -37,7 +37,7 @@ class Task(BaseModel):
     )
 
 
-class TaskClarification(BaseModel):
+class ClarificationRequest(BaseModel):
     """
     A request for more information about a task.
     """
@@ -61,7 +61,7 @@ class UserRequest(BaseModel):
         ...,
         description="A concise description of the tasks directly related to the main goal of the user's input.",
     )
-    clarifications: list[TaskClarification] = (
+    clarifications: list[ClarificationRequest] = (
         Field(  # TODO: what if no additional info is needed?
             ...,
             description="A list of questions requesting contextual information essential to the completion of the tasks. These questions can also be used to disambiguate the user's input.",

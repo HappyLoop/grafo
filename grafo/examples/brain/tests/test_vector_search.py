@@ -1,3 +1,4 @@
+import concurrent.futures
 import uuid
 from typing import Any
 from uuid import UUID
@@ -6,7 +7,7 @@ from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel
 from sqlmodel import Column, Field, SQLModel, text
 
-from grafo.examples.brain.services.db_service import PostgresHandler, VectorSearch
+from grafo.examples.brain.components.db_handler import PostgresHandler, VectorSearch
 from grafo.llm.openai_handler import OpenAIHandler
 
 
@@ -40,11 +41,19 @@ def test_vector_search():
     ]
 
     animals_collection = []
-    for msg in messages:
+
+    def build_embedding(msg):
         embedding = openai.create_embedding(msg).data[0].embedding
-        animals_collection.append(
-            Embedding(collection="animals", content=msg, embedding=embedding)
-        )
+        return Embedding(collection="animals", content=msg, embedding=embedding)
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_msg = {executor.submit(build_embedding, msg): msg for msg in messages}
+
+        for future in concurrent.futures.as_completed(future_to_msg):
+            try:
+                animals_collection.append(future.result())
+            except Exception as exc:
+                print(f"An error occurred: {exc}")
     db.insert(animals_collection)
 
     input = "What color is Nina?"

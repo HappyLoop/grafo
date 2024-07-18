@@ -1,25 +1,28 @@
-from typing import Callable, Optional, Type
+from typing import Annotated, Callable, Optional, Type
 
 from pydantic import BaseModel
 
-from examples.brain.services import TaskManager, ToolManager
+from examples.brain.components import TaskManager, ToolManager, ContextPoolManager
 from grafo.llm.base import BaseLLM
+
+
+type ToolMap = Annotated[
+    dict[Type[BaseModel], Optional[Callable]],
+    "A map of tools schemas to functions. If no function is provided, the tool is passice, which means it is only a schema to be filled.",
+]
 
 
 class Brain:
     def __init__(
         self,
-        llm_manager: BaseLLM,
-        tools_manager: dict[Type[BaseModel], Optional[Callable]],
+        llm_handler: BaseLLM,
+        tool_map: ToolMap,
+        context_pool_manager: ContextPoolManager,
         user_clarification: bool = False,  # ! to be implemented in the future
-        db_handler: Optional[Callable] = None,  # ! to be implemented in the future
-        context_pool_manager: Optional[
-            dict[Type[BaseModel], Optional[Callable]]
-        ] = None,  # ! to be implemented in the future, can use db handler
     ):
-        self._llm = llm_manager
-        self._task_manager = TaskManager(llm_manager)
-        self._tool_manager = ToolManager(llm_manager, tools_manager)
+        self._llm = llm_handler
+        self._task_manager = TaskManager(llm_handler)
+        self._tool_manager = ToolManager(llm_handler, tool_map)
         self._user_clarification = user_clarification
 
     def __str__(self) -> str:

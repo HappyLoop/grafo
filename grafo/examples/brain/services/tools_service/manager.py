@@ -2,7 +2,7 @@ from typing import Callable, Optional, Type
 
 from pydantic import BaseModel
 
-from grafo.handlers.llm.base import BaseLLM
+from grafo.llm.base import BaseLLM
 
 
 class ToolObject(BaseModel):

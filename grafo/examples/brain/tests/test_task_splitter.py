@@ -1,7 +1,7 @@
 import pytest
 
 from grafo.examples.brain.services import TaskManager
-from grafo.handlers.llm import OpenAIHandler
+from grafo.llm import OpenAIHandler
 
 
 @pytest.mark.asyncio

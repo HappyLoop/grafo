@@ -1,7 +1,7 @@
 import json
 from pydantic import BaseModel, Field
 
-from grafo.handlers.llm import OpenAIHandler
+from grafo.llm import OpenAIHandler
 from grafo._internal import logger
 
 

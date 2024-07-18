@@ -1,5 +1,5 @@
 from grafo.examples.brain.services.tasks_service import UserRequest
-from grafo.handlers.llm.base import BaseLLM
+from grafo.llm.base import BaseLLM
 
 
 class TaskManager:

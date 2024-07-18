@@ -6,8 +6,8 @@ from tools import CakeRecipeWriterTool, OccasionFinderTool, ResearchTool
 
 async def test_pipeline():
     brain = Brain(
-        llm=OpenAIHandler(),
-        tools={
+        llm_manager=OpenAIHandler(),
+        tools_manager={
             CakeRecipeWriterTool: None,
             OccasionFinderTool: None,
             ResearchTool: None,

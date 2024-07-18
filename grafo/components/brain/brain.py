@@ -9,13 +9,16 @@ from grafo.handlers.llm.base import BaseLLM
 class Brain:
     def __init__(
         self,
-        llm: BaseLLM,
-        tools: dict[Type[BaseModel], Optional[Callable]],
-        user_clarification: bool = False,
+        llm_manager: BaseLLM,
+        tools_manager: dict[Type[BaseModel], Optional[Callable]],
+        knowledge_manager: Optional[
+            dict[Type[BaseModel], Optional[Callable]]
+        ] = None,  # ! to be implemented in the future, can use db handler
+        user_clarification: bool = False,  # ! to be implemented in the future
     ):
-        self._llm = llm
-        self._task_manager = TaskManager(llm)
-        self._tool_manager = ToolManager(llm, tools)
+        self._llm = llm_manager
+        self._task_manager = TaskManager(llm_manager)
+        self._tool_manager = ToolManager(llm_manager, tools_manager)
         self._user_clarification = user_clarification
 
     def __str__(self) -> str:

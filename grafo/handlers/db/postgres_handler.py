@@ -1,15 +1,10 @@
 from typing import Any, Optional, Type
 
-from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel
-from sqlalchemy import Column
-from sqlmodel import Field, Session, SQLModel, create_engine, select as sqlmodel_select
+from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel import select as sqlmodel_select
 
 from grafo.handlers.db import BaseMultiModalDB
-
-
-class Item(SQLModel, table=True):
-    embedding: Any = Field(sa_column=Column(Vector(3)))
 
 
 class VectorComparison(BaseModel):
@@ -41,7 +36,7 @@ class PostgresHandler(BaseMultiModalDB):
                 where_statements = []
                 for key, values in where.items():
                     for val in values:
-                        where_statements.append(getattr(Item, key) == val)
+                        where_statements.append(getattr(model, key) == val)
                 statement = statement.where(*where_statements)
             if group_by:
                 statement = statement.group_by(getattr(model, group_by))

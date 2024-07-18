@@ -1,7 +1,7 @@
 import json
 from pydantic import BaseModel, Field
 
-from grafo.handlers import LLM, OpenAIHandler
+from grafo.handlers.llm import OpenAIHandler
 from grafo._internal import logger
 
 
@@ -25,15 +25,13 @@ async def test_chat():
     Summarize a conversation between the user and an AI.
     """
 
-    openai = LLM[
-        OpenAIHandler
-    ]()  # NOTE: don't forget to set API keys in environment variables
+    openai = OpenAIHandler()
     context = ""
 
     while True:
         user_input = input("Enter your message: ")
 
-        response: Message = openai.handler.send(
+        response: Message = openai.send(
             messages=[
                 {
                     "role": "system",

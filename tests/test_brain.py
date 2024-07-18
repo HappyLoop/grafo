@@ -1,20 +1,17 @@
-import asyncio
-
 from grafo.components.brain import Brain
-from grafo.handlers import LLM, OpenAIHandler
+from grafo.handlers.llm import OpenAIHandler
 
 from tests.tools import CakeRecipeWriterTool, OccasionFinderTool, ResearchTool
 
 
-async def call_pipeline():
-    llm = LLM[OpenAIHandler]()
+async def test_pipeline():
     brain = Brain(
-        llm,
-        {
+        llm=OpenAIHandler(),
+        tools={
             CakeRecipeWriterTool: None,
             OccasionFinderTool: None,
             ResearchTool: None,
-        },  # type: ignore
+        },
     )
     await brain.pipeline(
         """
@@ -22,6 +19,3 @@ async def call_pipeline():
         """
     )
     print(brain.task_manager.user_request)
-
-
-asyncio.run(call_pipeline())

@@ -1,13 +1,12 @@
 import pytest
 
 from grafo.components.brain.managers import TaskManager
-from grafo.handlers import LLM, OpenAIHandler
-
-openai = LLM[OpenAIHandler]()
+from grafo.handlers.llm import OpenAIHandler
 
 
 @pytest.mark.asyncio
 async def test_split_tasks():
+    openai = OpenAIHandler()
     manager = TaskManager(openai)
     await manager.split_tasks(
         """

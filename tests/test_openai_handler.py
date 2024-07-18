@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import BaseModel, Field
 
-from grafo.handlers import LLM, OpenAIHandler
+from grafo.handlers.llm import OpenAIHandler
 from grafo._internal import logger
 
 
@@ -36,8 +36,8 @@ async def test_openai_handler():
     """
     Test a tool that with a single message sent.
     """
-    openai = LLM[OpenAIHandler]()
-    response: SQLWriter = openai.handler.send(
+    openai = OpenAIHandler()
+    response: SQLWriter = openai.send(
         messages=[
             {
                 "role": "system",

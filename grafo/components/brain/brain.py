@@ -4,15 +4,15 @@
 # - Has centralizd state (TaskManager)
 # - Can understand inputs and split them into tasks (TaskManager)
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Type
 from pydantic import BaseModel
-from grafo.handlers.base import LLM
 
 from grafo.components.brain.managers import TaskManager, ToolManager
+from grafo.handlers.llm.base import BaseLLM
 
 
 class Brain:
-    def __init__(self, llm: LLM, tools: dict[BaseModel, Optional[Callable]]):
+    def __init__(self, llm: BaseLLM, tools: dict[Type[BaseModel], Optional[Callable]]):
         self._llm = llm
         self._task_manager = TaskManager(llm)
         self._tool_manager = ToolManager(llm, tools)
@@ -47,3 +47,6 @@ class Brain:
         # 3. Add clarification context to task prompt
 
         # 3. Create tree with tasks
+
+
+# Splitter -> Clarifier -> RAG/Input ->

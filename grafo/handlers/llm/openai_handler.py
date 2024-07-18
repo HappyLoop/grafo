@@ -1,12 +1,14 @@
 import os
-from typing import Optional
+from typing import Optional, Type, TypeVar
+from pydantic import BaseModel
 
 import instructor
-from langsmith import traceable
 from langsmith.wrappers import wrap_openai
 from openai import AsyncOpenAI, OpenAI
 
-from grafo.handlers.base import BaseLLM
+from grafo.handlers.llm import BaseLLM
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class OpenAIHandler(BaseLLM):
@@ -30,14 +32,13 @@ class OpenAIHandler(BaseLLM):
     def langsmith(self):
         return self._langsmith
 
-    @traceable(name="send")
     def send(
         self,
         messages: list,
-        response_model,
+        response_model: Type[T],
         model: Optional[str] = "gpt-4o",
         max_retries: int = 3,
-    ):
+    ) -> T:
         """
         Send data to the model.
         """
@@ -46,9 +47,7 @@ class OpenAIHandler(BaseLLM):
         else:
             client = OpenAI()
 
-        client = instructor.from_openai(
-            client=client, mode=instructor.Mode.TOOLS
-        )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
+        client = instructor.from_openai(client=client)
 
         return client.chat.completions.create(
             model=self.model or model,
@@ -58,14 +57,13 @@ class OpenAIHandler(BaseLLM):
             temperature=self.temperature,
         )
 
-    @traceable(name="send-async")
     async def asend(
         self,
         messages: list,
-        response_model,
+        response_model: Type[T],
         model: Optional[str] = "gpt-4o",
         max_retries: int = 3,
-    ):
+    ) -> T:
         """
         Sends data to the model asyncronously.
         """
@@ -74,9 +72,7 @@ class OpenAIHandler(BaseLLM):
         else:
             client = AsyncOpenAI()
 
-        client = instructor.from_openai(
-            client=client, mode=instructor.Mode.TOOLS
-        )  # NOTE: keep TOOLS instead of PARALLEL_TOOLS for now
+        client = instructor.from_openai(client=client)
 
         return await client.chat.completions.create(
             model=self.model or model,

@@ -1,5 +1,5 @@
-from grafo.handlers import LLM
 from grafo.components.brain.managers.splitter.schemas import UserRequest
+from grafo.handlers.llm.base import BaseLLM
 
 
 class TaskManager:
@@ -7,11 +7,13 @@ class TaskManager:
     Manages the state of Tasks within a UserRequest.
     """
 
-    def __init__(self, llm: LLM):
+    def __init__(self, llm: BaseLLM):
         self._llm = llm
 
     def __str__(self) -> str:
         if not hasattr(self, "user_request"):
+            return "TaskManager(None)"
+        if self.user_request is None:
             return "TaskManager(None)"
         return f"TaskManager({self.user_request.tasks})"
 
@@ -31,7 +33,7 @@ class TaskManager:
         """
         Create a UserRequest object from a user input. It includes a list of tasks and clarifications.
         """
-        self._user_request: UserRequest = await self.llm.handler.asend(
+        self._user_request: UserRequest = await self.llm.asend(
             messages=[
                 {
                     "role": "system",

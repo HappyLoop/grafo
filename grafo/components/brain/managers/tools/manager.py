@@ -1,11 +1,12 @@
-from typing import Callable, Optional
+from typing import Callable, Optional, Type
 from pydantic import BaseModel
-from collections import namedtuple
 
-from grafo.handlers.base import LLM
+from grafo.handlers.llm.base import BaseLLM
 
 
-ToolObject = namedtuple("ToolObject", ["model", "fn"])
+class ToolObject(BaseModel):
+    model: Type[BaseModel]
+    fn: Optional[Callable]
 
 
 class ToolManager:
@@ -13,10 +14,11 @@ class ToolManager:
     Manages tools for the Brain.
     """
 
-    def __init__(self, llm: LLM, tools: dict[BaseModel, Optional[Callable]]):
+    def __init__(self, llm: BaseLLM, tools: dict[Type[BaseModel], Optional[Callable]]):
         self._llm = llm
         self._tool_map = {
-            model.__name__: ToolObject(model, fn) for model, fn in tools.items()
+            model.__name__: ToolObject(model=model, fn=fn)
+            for model, fn in tools.items()
         }
 
     def __str__(self):
@@ -31,7 +33,7 @@ class ToolManager:
     def tool_map(self):
         return self._tool_map
 
-    def get_tool(self, tool_name: str) -> Optional[ToolObject]:
+    def get_tool(self, tool_name: str):
         """
         Retrieve a tool by its name.
         """
@@ -46,23 +48,22 @@ class ToolManager:
             sub_prompt += f"{name}: {tool.model.__doc__}\n"
         return sub_prompt
 
-    async def call_tool(self, tool_name: str, task_description: str) -> BaseModel:
+    async def call_tool(self, tool_name: str, task_description: str):
         """
         Calls a tool by its name.
         """
         tool_object = self.get_tool(tool_name)
         if not tool_object:
             raise ValueError(f"Tool {tool_name} not found.")
-        model, fn = tool_object
-        filled_tool_model = await self.llm.handler.asend(
+        filled_tool_model: BaseModel = await self.llm.asend(
             messages=[
                 {
                     "role": "user",
                     "content": task_description,
                 }
             ],
-            response_model=model,
+            response_model=tool_object.model,
         )
-        if fn is None:
+        if tool_object.fn is None:
             return filled_tool_model
-        return fn(**filled_tool_model.model_dump())
+        return tool_object.fn(**filled_tool_model.model_dump())

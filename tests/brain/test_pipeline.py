@@ -1,4 +1,4 @@
-from grafo.components.brain import Brain
+from .brain import Brain
 from grafo.handlers.llm import OpenAIHandler
 
 from tools import CakeRecipeWriterTool, OccasionFinderTool, ResearchTool

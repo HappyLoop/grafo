@@ -1,11 +1,14 @@
-from typing import Union
+from typing import Optional, Union, Type, TypeVar, Sequence
 import uuid
 
+from pydantic import BaseModel
 from sqlmodel import text
 
 from grafo.examples.brain.components.analysis_handler import SQLQuery
 from grafo.examples.brain.components.db_handler.db_handler import DBHandler
 from grafo.llm.base import BaseLLM
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class AnalysisHandler:  # ! THIS ENTIRE CLASS IS ONGOING WORK
@@ -54,8 +57,17 @@ class AnalysisHandler:  # ! THIS ENTIRE CLASS IS ONGOING WORK
         self.db.execute(text(analytical_query.statement))
         return analytical_query
 
-    def analyze(self, input: str, data_schema: str, data: list[dict[str, str]]):
-        # ! ONGOING WORK
+    def _fit_to_model(self, model: Type[T], data: Sequence):
+        "Fits output to a Pydantic model."
+        return model
+
+    def analyze(
+        self,
+        input: str,
+        data_schema: str,
+        data: list[dict[str, str]],
+        output_model: Optional[Type[T]] = None,
+    ) -> Union[Sequence[T], Type[T]]:
         create_query = self._build_table(data_schema)
         print(create_query.schema)
 
@@ -64,5 +76,7 @@ class AnalysisHandler:  # ! THIS ENTIRE CLASS IS ONGOING WORK
         analytical_query = self._build_analysis(create_query, input)
         print(analytical_query.schema)
 
-        return self.db.execute(text(analytical_query.statement))
-        # ! ONGOING WORK
+        result = self.db.execute(text(analytical_query.statement))
+        if output_model:
+            return self._fit_to_model(output_model, result)  # TODO: write this method
+        return result

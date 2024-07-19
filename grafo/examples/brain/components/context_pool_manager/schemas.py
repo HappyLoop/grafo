@@ -8,3 +8,6 @@ class Context(BaseModel):
 
     task_id: int = Field(..., description="The ID of the task.")
     answer: str = Field(..., description="The answer to the clarification question.")
+    satisfactory: bool = Field(
+        ..., description="Whether your answer satisfies the clarification request."
+    )

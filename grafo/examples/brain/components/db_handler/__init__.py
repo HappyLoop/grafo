@@ -1,4 +1,3 @@
-from .base import BaseMultiModalDB
-from .postgres_handler import PostgresHandler, VectorSearch
+from .db_handler import DBHandler, VectorSearch
 
-__all__ = ["BaseMultiModalDB", "PostgresHandler", "VectorSearch"]
+__all__ = ["DBHandler", "VectorSearch"]

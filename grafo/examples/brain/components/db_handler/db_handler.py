@@ -4,18 +4,38 @@ from typing import Any, Optional, Sequence, Type, TypeVar
 from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel import select as sqlmodel_select
 
-from grafo.examples.brain.components.db_handler import BaseMultiModalDB
 from grafo.examples.brain.components.db_handler.schemas import VectorSearch
 
 T = TypeVar("T", bound=SQLModel)
 
 
-class PostgresHandler(BaseMultiModalDB):
-    def __init__(self, db_url: Optional[str] = None):
+class DBHandler:
+    """
+    A database handler. The database URL can be provided as an environment variable. If not provided, an in-memory SQLite database is used.
+
+    :param db_url: The database URL.
+    """
+
+    def __init__(self, db_url: Optional[str] = None, in_memory: bool = False):
+        if in_memory:
+            db_url = "sqlite:///:memory:"
         connection_string = db_url or os.getenv("DB_URL")
         if not connection_string:
             raise ValueError("No connection string provided.")
-        self.engine = create_engine(connection_string)
+        kwargs = {
+            "url": connection_string,
+        }
+        config_map = {
+            "sqlite": {
+                "connect_args": {"check_same_thread": False},
+            },
+        }
+        matching_key = next(
+            filter(lambda key: key in connection_string, config_map.keys()), None
+        )
+        if matching_key:
+            kwargs.update(config_map[matching_key])  # type: ignore
+        self.engine = create_engine(**kwargs)
 
     def select(
         self,

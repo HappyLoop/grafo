@@ -7,7 +7,7 @@ from pgvector.sqlalchemy import Vector
 from pydantic import BaseModel
 from sqlmodel import Column, Field, SQLModel, text
 
-from grafo.examples.brain.components.db_handler import PostgresHandler, VectorSearch
+from grafo.examples.brain.components.db_handler import DBHandler, VectorSearch
 from grafo.llm.openai_handler import OpenAIHandler
 
 
@@ -28,7 +28,7 @@ class DogInfo(BaseModel):
 
 
 def test_vector_search():
-    db = PostgresHandler()
+    db = DBHandler()
     openai = OpenAIHandler()
 
     SQLModel.metadata.create_all(db.engine)

@@ -1,4 +1,4 @@
-# This is a consumer class, that consumes ClarificationRequests to produce Context objects
+# This class consumes ClarificationRequests to produce Context objects
 
 from typing import Callable
 

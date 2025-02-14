@@ -18,11 +18,11 @@ def create_node(
     """
     Create a node with the given name, coroutine, and picker function.
     """
+    metadata = {"name": name, "description": f"{name.capitalize()} Node"}
     if picker:
         return PickerNode(
             uuid=str(uuid4()),
-            name=name,
-            description=f"{name.capitalize()} Node",
+            metadata=metadata,
             args=[name],
             coroutine=picker,
             # forward_output=True,
@@ -30,8 +30,7 @@ def create_node(
     if is_union_node:
         return UnionNode(
             uuid=str(uuid4()),
-            name=name,
-            description=f"{name.capitalize()} Node",
+            metadata=metadata,
             coroutine=coroutine,
             args=[name],
             # forward_output=True,
@@ -39,8 +38,7 @@ def create_node(
 
     return Node(
         uuid=str(uuid4()),
-        name=name,
-        description=f"{name.capitalize()} Node",
+        metadata=metadata,
         coroutine=coroutine,
         args=[name],
         # forward_output=True,
@@ -67,8 +65,10 @@ async def mockup_picker(node: Node, children: List[Node], *args) -> List[Node]:
     """
     Example picker function that selects the first and third children of the root node.
     """
-    logger.debug(f"{node.name} executed")
-    logger.debug(f"  -> picked: {children[0].name}, {children[2].name}")
+    logger.debug(f"{node.metadata['name']} executed")
+    logger.debug(
+        f"  -> picked: {children[0].metadata['name']}, {children[2].metadata['name']}"
+    )
     return [children[0], children[2]]
 
 
@@ -88,7 +88,7 @@ async def test_manual_tree():
     child_node1.connect(grandchild_node1)
     child_node1.connect(grandchild_node2)
 
-    executor = AsyncTreeExecutor(root=root_node, num_workers=3, logger=logger)
+    executor = AsyncTreeExecutor(root=root_node, min_workers=3, logger=logger)
     result = await executor.run()
 
     # Assert result

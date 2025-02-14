@@ -22,8 +22,7 @@ class Node:
     A Node is a unit of work that can be executed concurrently. It contains a coroutine function that is executed by a worker.
 
         :param uuid: The unique identifier of the node.
-        :param name: The name of the node.
-        :param description: The description of the node.
+        :param metadata: A dict containing at least "name" and "description" for the node.
         :param coroutine: The coroutine function to execute.
         :param args: The arguments to pass to the coroutine.
         :param kwargs: The keyword arguments to pass to the coroutine.
@@ -36,8 +35,7 @@ class Node:
     def __init__(
         self,
         uuid: str,
-        name: str,
-        description: str,
+        metadata: dict,
         coroutine: Callable,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
@@ -45,10 +43,9 @@ class Node:
         forward_output: Optional[bool] = False,
     ):
         self.__validate_param(uuid, "uuid", str)
-        self.__validate_param(name, "name", str)
-        self.__validate_param(description, "description", str)
         self.__validate_param(args, "args", list, allow_none=True)
         self.__validate_param(kwargs, "kwargs", dict, allow_none=True)
+        self._metadata = metadata
 
         if not inspect.iscoroutinefunction(coroutine):
             raise ValueError(
@@ -59,8 +56,6 @@ class Node:
             raise ValueError("'children' parameter must be a list of <Node> instances")
 
         self._uuid = uuid
-        self._name = name
-        self._description = description
         self._coroutine = coroutine
         self._args = args if args is not None else []
         self._kwargs = kwargs if kwargs is not None else {}
@@ -70,19 +65,15 @@ class Node:
         self._forward_output = forward_output
 
     def __repr__(self) -> str:
-        return f"Node(uuid={self.uuid}, name={self.name})"
+        return f"Node(uuid={self.uuid}, metadata={self.metadata})"
 
     @property
     def uuid(self):
         return self._uuid
 
     @property
-    def name(self):
-        return self._name
-
-    @property
-    def description(self):
-        return self._description
+    def metadata(self):
+        return self._metadata
 
     @property
     def children(self):
@@ -136,8 +127,12 @@ class Node:
         """
         Connects a child to this node.
         """
-        if not isinstance(child, Node):
+        if not issubclass(type(child), Node):
             raise ValueError("The 'child' parameter must be a Node instance.")
+        if isinstance(child, UnionNode) and isinstance(self, PickerNode):
+            raise ValueError(
+                "A UnionNode cannot have a PickerNode as a child. Use a PickerNode as a parent instead."
+            )
         self.children.append(child)
 
     @safe_execution
@@ -145,15 +140,14 @@ class Node:
         """
         Disconnects a child from this node.
         """
-        if not isinstance(child, Node):
+        if not issubclass(type(child), Node):
             raise ValueError("The 'child' parameter must be a Node instance.")
         self.children.remove(child)
 
     @safe_execution
     def update(
         self,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
+        metadata: Optional[dict] = None,
         children: Optional[list[Self]] = None,
         coroutine: Optional[Callable] = None,
         args: Optional[list[Any]] = None,
@@ -162,19 +156,16 @@ class Node:
         """
         Updates the node with new data.
         """
-        self.__validate_param(name, "name", str, allow_none=True)
-        self.__validate_param(description, "description", str, allow_none=True)
+        if metadata is not None:
+            if "name" not in metadata or "description" not in metadata:
+                raise ValueError("metadata must contain 'name' and 'description' keys.")
+            self._metadata = metadata
+
         self.__validate_param(args, "args", list, allow_none=True)
         self.__validate_param(kwargs, "kwargs", dict, allow_none=True)
 
         if children and any(not isinstance(child, Node) for child in children):
             raise ValueError("'children' parameter must be a list of <Node> instances")
-
-        if name:
-            self._name = name
-
-        if description:
-            self._description = description
 
         if children:
             self._children = children
@@ -186,7 +177,7 @@ class Node:
         self._kwargs = kwargs if kwargs is not None else {}
 
     @safe_execution
-    async def run(self):
+    async def run(self) -> Any:
         """
         Asynchronously runs the coroutine of in this node.
         """
@@ -210,11 +201,8 @@ class PickerNode(Node):
     A node that uses an LLM to determine which children to queue next.
 
     :param uuid: The unique identifier of the node.
-    :param name: The name of the node.
-    :param description: The description of the node.
-    :param coroutine: The coroutine function to execute.
-    :param llm: The LLM to use for picking children.
-    :param picker: A function that receives the current node, the result of running the node, and its children. It then returns a list of children to be queued. If None, all children are queued.
+    :param metadata: A dict containing at least "name" and "description" for the node.
+    :param coroutine: The coroutine (picker) function to execute.
     :param args: The arguments to pass to the coroutine.
     :param kwargs: The keyword arguments to pass to the coroutine.
     :param children: The children nodes of this node.
@@ -224,33 +212,26 @@ class PickerNode(Node):
     def __init__(
         self,
         uuid: str,
-        name: str,
-        description: str,
+        metadata: dict,
         coroutine: Callable,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         children: Optional[list["Node"]] = None,
         forward_output: Optional[bool] = False,
     ):
-        if not isinstance(coroutine, Callable):
-            raise ValueError("The 'picker' parameter must be a callable function.")
-
-        super().__init__(uuid, name, description, coroutine, args, kwargs, children)
-
-        self._forward_output = forward_output
+        super().__init__(
+            uuid, metadata, coroutine, args, kwargs, children, forward_output
+        )
 
     def __repr__(self) -> str:
-        return f"PickerNode(uuid={self.uuid}, name={self.name})"
+        return f"PickerNode(uuid={self.uuid}, metadata={self.metadata})"
 
     @safe_execution
-    async def choose(self):
+    async def run(self) -> list["Node"]:
         """
         Picks the children to queue next based on the result of the node.
         """
         return await self.coroutine(self, self.children, *self.args, **self.kwargs)
-
-    async def run(self):
-        raise NotImplementedError("PickerNode does not support the 'run' method.")
 
 
 class UnionNode(Node):
@@ -258,8 +239,7 @@ class UnionNode(Node):
     A node that waits for all its parents to finish executing before continuing.
 
     :param uuid: The unique identifier of the node.
-    :param name: The name of the node.
-    :param description: The description of the node.
+    :param metadata: A dict containing at least "name" and "description" for the node.
     :param coroutine: The coroutine function to execute.
     :param args: The arguments to pass to the coroutine.
     :param kwargs: The keyword arguments to pass to the coroutine.
@@ -273,22 +253,21 @@ class UnionNode(Node):
     def __init__(
         self,
         uuid: str,
-        name: str,
-        description: str,
+        metadata: dict,
         coroutine: Callable,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         parents: Optional[list["UnionNode"]] = None,
         forward_output: Optional[bool] = False,
     ):
-        super().__init__(uuid, name, description, coroutine, args, kwargs)
+        super().__init__(uuid, metadata, coroutine, args, kwargs)
         self._parents = parents if parents is not None else []
         self._parent_outputs = {}
         self._num_parents_completed = 0
         self._forward_output = forward_output
 
     def __repr__(self) -> str:
-        return f"UnionNode(uuid={self.uuid}, name={self.name})"
+        return f"UnionNode(uuid={self.uuid}, metadata={self.metadata})"
 
     @property
     def parents(self):
@@ -322,7 +301,7 @@ class UnionNode(Node):
         """
         Adds a parent to this node.
         """
-        if not isinstance(parent, Node):
+        if not issubclass(type(parent), Node):
             raise ValueError("The 'parent' parameter must be a UnionNode instance.")
         self._parents.append(parent)
 
@@ -335,7 +314,7 @@ class UnionNode(Node):
         self._num_parents_completed += 1
 
     @safe_execution
-    async def run(self):
+    async def run(self) -> Any:
         """
         Waits for all parents to complete before running the coroutine.
         """

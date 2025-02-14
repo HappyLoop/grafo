@@ -32,7 +32,7 @@ Powered by `asyncio` & `instructor`!
 
 ## How ##
 - You have a tree of interconected `Nodes` and an `asyncio.Queue()`
-- Upon each Node's execution, it queues its children up next
+- Upon each Node's execution, it removes itself from the queue and enqueues its children up next
 - Workers stop when they find a `None` in the queue
 - ⚠️ Be careful with UnionNodes, they can cause invisible deadlocks. ⚠️
 

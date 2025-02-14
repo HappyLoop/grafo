@@ -1,3 +1,3 @@
-from grafo import interpreters, trees
+from grafo import trees
 
-__all__ = ["interpreters", "trees"]
+__all__ = ["trees"]

@@ -245,6 +245,7 @@ class UnionNode(Node):
     :param kwargs: The keyword arguments to pass to the coroutine.
     :param parents: The parent nodes of this node.
     :param forward_output: Whether to forward the output of this node to its children as arguments.
+    :param timeout: The timeout for waiting for parents to complete.
 
     >>> USE WITH CARE!
     >>> This node can cause deadlocks if not used properly.
@@ -259,12 +260,15 @@ class UnionNode(Node):
         kwargs: Optional[dict[str, Any]] = None,
         parents: Optional[list["UnionNode"]] = None,
         forward_output: Optional[bool] = False,
+        timeout: Optional[float] = None,
     ):
         super().__init__(uuid, metadata, coroutine, args, kwargs)
         self._parents = parents if parents is not None else []
         self._parent_outputs = {}
         self._num_parents_completed = 0
         self._forward_output = forward_output
+        self._timeout = timeout
+        self._timeout_flag = False
 
     def __repr__(self) -> str:
         return f"UnionNode(uuid={self.uuid}, metadata={self.metadata})"
@@ -280,6 +284,10 @@ class UnionNode(Node):
     @property
     def num_parents_completed(self):
         return self._num_parents_completed
+
+    @property
+    def timeout_flag(self):
+        return self._timeout_flag
 
     @safe_execution
     def append_arguments(
@@ -318,10 +326,13 @@ class UnionNode(Node):
         """
         Waits for all parents to complete before running the coroutine.
         """
-        while self.num_parents_completed < len(self.parents):
-            await asyncio.sleep(0.1)
-
         self._is_running = True
+        try:
+            await asyncio.wait_for(self._wait_for_parents(), timeout=self._timeout)
+        except asyncio.TimeoutError:
+            self._timeout_flag = True
+            self._is_running = False  # Ensure the running flag is reset
+            raise asyncio.TimeoutError
 
         try:
             async with asyncio.Lock():
@@ -332,3 +343,7 @@ class UnionNode(Node):
         finally:
             self._is_running = False
         return result
+
+    async def _wait_for_parents(self):
+        while self.num_parents_completed < len(self.parents):
+            await asyncio.sleep(0.1)

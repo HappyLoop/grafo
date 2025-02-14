@@ -1,6 +1,6 @@
 ## What ##
 A simple library for building runnable tree structures. Trees are built using Nodes, which
-contain code to be run.
+contain code to be run. The number of workers is automatically managed (optional).
 
 Use:
 
@@ -25,15 +25,11 @@ tree = executor | nodes
 result = await tree.run()
 ```
 
-Powered by `asyncio` & `instructor`!
-
-- `asyncio`: https://docs.python.org/3/library/asyncio.html
-- `instructor`: https://python.useinstructor.com/
+Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)
 
 ## How ##
 - You have a tree of interconected `Nodes` and an `asyncio.Queue()`
-- Upon each Node's execution, it queues its children up next
-- Workers stop when they find a `None` in the queue
+- Upon each Node's execution, it removes itself from the queue and enqueues its children up next
 - ⚠️ Be careful with UnionNodes, they can cause invisible deadlocks. ⚠️
 
 ## Axioms ##
@@ -50,6 +46,3 @@ Powered by `asyncio` & `instructor`!
 ## During Development ##
 - `pip install -e .` to install on your environment
 - `pytest` to run tests, add `-s` flag for tests to run `print` statements
-
-## Extras ##
-[![Pydantic is All You Need](https://i3.ytimg.com/vi/yj-wSRJwrrc/hqdefault.jpg)](https://www.youtube.com/embed/yj-wSRJwrrc)

@@ -153,7 +153,7 @@ class AsyncTreeExecutor:
                 "A root has been provided, indicating a manual tree construction. Cannot use the | operator syntax."
             )
 
-        if not self._root and len(tree_dict) > 1:
+        if len(tree_dict) > 1:
             logger.warning(
                 "Tree contains more than one node in the 1st level. Defaulting to a mockup root node."
             )

@@ -91,7 +91,7 @@ async def test_manual_tree():
     child_node1.connect(grandchild_node1)
     child_node1.connect(grandchild_node2)
 
-    executor = AsyncTreeExecutor(root=root_node, num_workers=3, logger=logger)
+    executor = AsyncTreeExecutor(root=root_node, num_workers=3)
     result = await executor.run()
 
     # Assert result
@@ -127,7 +127,7 @@ async def test_with_picker_node():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(logger=logger)
+    executor = AsyncTreeExecutor()
     tree = executor | nodes
     result = await tree.run()
 
@@ -164,7 +164,7 @@ async def test_with_union_node():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(logger=logger)
+    executor = AsyncTreeExecutor()
     tree = executor | nodes
     result = await tree.run()
 
@@ -200,7 +200,7 @@ async def test_error_cutoff_branch():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(cutoff_branch_on_error=True, logger=logger)
+    executor = AsyncTreeExecutor(cutoff_branch_on_error=True)
     tree = executor | nodes
     result = await tree.run()
 
@@ -230,7 +230,7 @@ async def test_error_quit_tree():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(quit_tree_on_error=True, logger=logger)
+    executor = AsyncTreeExecutor(quit_tree_on_error=True)
     tree = executor | nodes
     result = await tree.run()
 
@@ -269,7 +269,7 @@ async def test_union_node_timeout():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(logger=logger, quit_tree_on_error=True)
+    executor = AsyncTreeExecutor(quit_tree_on_error=True)
     tree = executor | nodes
     result = await tree.run()
 

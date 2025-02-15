@@ -44,5 +44,5 @@ Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)
 3. Give the programmer granular control.
 
 ## During Development ##
-- `pip install -e .` to install on your environment
+- `pip install grafo` to install on your environment
 - `pytest` to run tests, add `-s` flag for tests to run `print` statements

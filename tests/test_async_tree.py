@@ -34,7 +34,7 @@ def create_node(
             metadata=metadata,
             coroutine=coroutine,
             args=[name],
-            timeout=timeout,
+            parent_timeout=timeout,
             # forward_output=True,
         )
         return node
@@ -274,11 +274,8 @@ async def test_union_node_timeout():
     result = await tree.run()
 
     # Assert that the union node's timeout flag is set
-    # assert union_node.timeout_flag is True
+    assert union_node.timeout_flag is True
     # Assert that the root and child nodes completed successfully
     nodes_uuids = [root_node.uuid, child_node1.uuid]
     assert all(node_uuid in result.keys() for node_uuid in nodes_uuids)
     logger.debug(result)
-
-
-asyncio.run(test_union_node_timeout())

@@ -22,4 +22,7 @@ jobs:
       run: pip install ruff
 
     - name: Run Ruff
-      run: ruff .  # Adjust the command and path as needed
+      run: ruff format .  # Adjust the command and path as needed
+
+    - name: Run Ruff Check
+      run: ruff check .  # Adjust the command and path as needed

@@ -231,7 +231,15 @@ class PickerNode(Node):
         """
         Picks the children to queue next based on the result of the node.
         """
-        return await self.coroutine(self, self.children, *self.args, **self.kwargs)
+        result = await self.coroutine(self, self.children, *self.args, **self.kwargs)
+        if not isinstance(result, list):
+            raise ValueError("The picker coroutine must return a list of children.")
+        for child in result:
+            if not isinstance(child, Node):
+                raise ValueError(
+                    "The picker coroutine must return a list of Node instances."
+                )
+        return result
 
 
 class UnionNode(Node):
@@ -244,8 +252,8 @@ class UnionNode(Node):
     :param args: The arguments to pass to the coroutine.
     :param kwargs: The keyword arguments to pass to the coroutine.
     :param parents: The parent nodes of this node.
+    :param parent_timeout: The timeout for waiting for parents to complete.
     :param forward_output: Whether to forward the output of this node to its children as arguments.
-    :param timeout: The timeout for waiting for parents to complete.
 
     >>> USE WITH CARE!
     >>> This node can cause deadlocks if not used properly.
@@ -259,15 +267,15 @@ class UnionNode(Node):
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
         parents: Optional[list["UnionNode"]] = None,
+        parent_timeout: Optional[float] = None,
         forward_output: Optional[bool] = False,
-        timeout: Optional[float] = None,
     ):
         super().__init__(uuid, metadata, coroutine, args, kwargs)
         self._parents = parents if parents is not None else []
         self._parent_outputs = {}
         self._num_parents_completed = 0
         self._forward_output = forward_output
-        self._timeout = timeout
+        self._parent_timeout = parent_timeout
         self._timeout_flag = False
 
     def __repr__(self) -> str:
@@ -328,7 +336,9 @@ class UnionNode(Node):
         """
         self._is_running = True
         try:
-            await asyncio.wait_for(self._wait_for_parents(), timeout=self._timeout)
+            await asyncio.wait_for(
+                self._wait_for_parents(), timeout=self._parent_timeout
+            )
         except asyncio.TimeoutError:
             self._timeout_flag = True
             self._is_running = False  # Ensure the running flag is reset

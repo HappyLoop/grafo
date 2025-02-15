@@ -30,7 +30,7 @@ Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)
 ## How ##
 - You have a tree of interconected `Nodes` and an `asyncio.Queue()`
 - Upon each Node's execution, it removes itself from the queue and enqueues its children up next
-- ⚠️ Be careful with UnionNodes, they can cause invisible deadlocks if you DON'T USE timeouts. ⚠️
+- ⚠️ Be careful with UnionNodes, they can cause invisible deadlocks. ⚠️
 
 ## Axioms ##
 1) A tree can only have one root node.

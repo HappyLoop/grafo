@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 from uuid import uuid4
 
 import pytest
@@ -14,33 +14,34 @@ def create_node(
     coroutine: Any,
     picker: Optional[Any] = None,
     is_union_node: bool = False,
-) -> Node:
+    timeout: Optional[float] = None,
+) -> Union[PickerNode, UnionNode, Node]:
     """
     Create a node with the given name, coroutine, and picker function.
     """
+    metadata = {"name": name, "description": f"{name.capitalize()} Node"}
     if picker:
         return PickerNode(
             uuid=str(uuid4()),
-            name=name,
-            description=f"{name.capitalize()} Node",
+            metadata=metadata,
             args=[name],
             coroutine=picker,
             # forward_output=True,
         )
     if is_union_node:
-        return UnionNode(
+        node = UnionNode(
             uuid=str(uuid4()),
-            name=name,
-            description=f"{name.capitalize()} Node",
+            metadata=metadata,
             coroutine=coroutine,
             args=[name],
+            timeout=timeout,
             # forward_output=True,
         )
+        return node
 
     return Node(
         uuid=str(uuid4()),
-        name=name,
-        description=f"{name.capitalize()} Node",
+        metadata=metadata,
         coroutine=coroutine,
         args=[name],
         # forward_output=True,
@@ -67,8 +68,10 @@ async def mockup_picker(node: Node, children: List[Node], *args) -> List[Node]:
     """
     Example picker function that selects the first and third children of the root node.
     """
-    logger.debug(f"{node.name} executed")
-    logger.debug(f"  -> picked: {children[0].name}, {children[2].name}")
+    logger.debug(f"{node.metadata['name']} executed")
+    logger.debug(
+        f"  -> picked: {children[0].metadata['name']}, {children[2].metadata['name']}"
+    )
     return [children[0], children[2]]
 
 
@@ -237,4 +240,45 @@ async def test_error_quit_tree():
     logger.debug(result)
 
 
-asyncio.run(test_with_union_node())
+@pytest.mark.asyncio
+async def test_union_node_timeout():
+    """
+    Test the AsyncTreeExecutor with a UnionNode that has a timeout.
+    """
+
+    async def long_running_coroutine(name):
+        # Simulate a long-running task
+        await asyncio.sleep(2)
+        logger.debug(f"{name} executed")
+        return f"{name} result"
+
+    root_node = create_node("root", mockup_coroutine)
+    child_node1 = create_node("child1", long_running_coroutine)
+    child_node2 = create_node("child2", mockup_coroutine)
+    # Create a UnionNode with a timeout of 1 second
+    union_node: UnionNode = create_node(
+        "union", mockup_coroutine, is_union_node=True, timeout=1
+    )  # type: ignore
+
+    # Using a JSON-like structure and the '|' operator to build the tree
+    nodes = {
+        root_node: {
+            child_node1: [union_node],
+            child_node2: [union_node],
+        }
+    }
+
+    # Forward the results of each node to its children as arguments
+    executor = AsyncTreeExecutor(logger=logger, quit_tree_on_error=True)
+    tree = executor | nodes
+    result = await tree.run()
+
+    # Assert that the union node's timeout flag is set
+    # assert union_node.timeout_flag is True
+    # Assert that the root and child nodes completed successfully
+    nodes_uuids = [root_node.uuid, child_node1.uuid]
+    assert all(node_uuid in result.keys() for node_uuid in nodes_uuids)
+    logger.debug(result)
+
+
+asyncio.run(test_union_node_timeout())

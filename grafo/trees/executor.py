@@ -16,6 +16,9 @@ class AsyncTreeExecutor:
 
     :param root: The root node of the tree.
     :param num_workers: The number of workers to process the tree.
+    :param min_workers: The minimum number of workers allowed.
+    :param max_workers: The maximum number of workers allowed.
+    :param use_dynamic_workers: Whether to automatically adjust the number of workers.
     :param forward_results: Whether to forward the results of each node to its children as arguments.
     :param logger: A logger to log errors.
     :param cutoff_branch_on_error: Whether to stop the branch when a node fails.
@@ -27,15 +30,31 @@ class AsyncTreeExecutor:
         name: Optional[str] = None,
         root: Optional[Node] = None,
         num_workers: int = 1,
+        min_workers: int = 1,
+        max_workers: int = 10,
+        use_dynamic_workers: bool = True,
         logger: Logger | None = None,
         cutoff_branch_on_error: bool = False,
         quit_tree_on_error: bool = False,
     ):
+        if num_workers < min_workers:
+            raise ValueError(
+                "'num_workers' must be greater than or equal to 'min_workers'."
+            )
+        if max_workers < num_workers:
+            raise ValueError(
+                "'max_workers' must be greater than or equal to 'num_workers'."
+            )
+
         self._name = name
 
         self._root = root
         self._queue = asyncio.Queue()
         self._num_workers = num_workers
+        self._min_workers = min_workers
+        self._max_workers = max_workers
+        self._use_dynamic_workers = use_dynamic_workers
+        self._workers = []
         self._output = dict()
 
         self._logger = logger
@@ -60,8 +79,16 @@ class AsyncTreeExecutor:
         return self._queue
 
     @property
-    def num_workers(self):
-        return self._num_workers
+    def min_workers(self):
+        return self._min_workers
+
+    @property
+    def max_workers(self):
+        return self._max_workers
+
+    @property
+    def workers(self):
+        return self._workers
 
     @property
     def output(self):
@@ -114,12 +141,8 @@ class AsyncTreeExecutor:
 
         The structure can go on indefinitely.
         """
-        if not isinstance(tree_dict, dict):
-            raise ValueError("'tree_dict' must be a dictionary.")
-        elif len(tree_dict) != 1:
+        if len(tree_dict) != 1:
             raise ValueError("'tree_dict' must contain exactly one root node.")
-
-        self._num_workers = 0
 
         def connect_children(
             parent_node: Node, children_iterable: dict[Node, Any] | list[Node]
@@ -141,7 +164,6 @@ class AsyncTreeExecutor:
                     if isinstance(child_node, UnionNode):
                         child_node.add_parent(parent_node)
 
-                    self._num_workers += 1
                     connect_children(child_node, descendants_iterable)
 
             elif isinstance(children_iterable, list):
@@ -157,8 +179,6 @@ class AsyncTreeExecutor:
                     parent_node.connect(child_node)
                     if isinstance(child_node, UnionNode):
                         child_node.add_parent(parent_node)
-
-                    self._num_workers += 1
 
         for root_node, children_iterable in tree_dict.items():
             self._root = root_node
@@ -177,7 +197,7 @@ class AsyncTreeExecutor:
 
                     self.__validate_element(child_node)
                     root_node.connect(child_node)
-                    self._num_workers += 1
+
         return self
 
     async def __worker(self):
@@ -189,15 +209,13 @@ class AsyncTreeExecutor:
             node: Node = await self._queue.get()
 
             if node is None:
+                self._queue.task_done()
                 break
 
             # Run the node
             try:
                 if node.uuid not in self._visited_nodes:
-                    if not isinstance(node, PickerNode):
-                        result = await node.run()
-                    else:
-                        result = await node.choose()
+                    result = await node.run()
             except Exception as e:
                 if self._quit_tree_on_error:
                     self._graceful_stop_flag = True
@@ -253,13 +271,37 @@ class AsyncTreeExecutor:
                     if isinstance(child, UnionNode):
                         child.parent_completed(node.uuid, node.output)
 
-            # Enqueue children
+            # Enqueue children and adjust workers
             if not self._graceful_stop_flag:
                 async with asyncio.Lock():
-                    for node in children:
-                        if node not in self._enqueued_nodes:
-                            self._queue.put_nowait(node)
-                            self._enqueued_nodes.add(node)
+                    for child_node in children:
+                        if child_node not in self._enqueued_nodes:
+                            self._queue.put_nowait(child_node)
+                            self._enqueued_nodes.add(child_node)
+                            # Adjust workers if needed
+                            if (
+                                self._use_dynamic_workers
+                                and self._queue.qsize() > len(self._workers)
+                                and len(self._workers) < self._max_workers
+                            ):
+                                new_worker = asyncio.create_task(self.__worker())
+                                self._workers.append(new_worker)
+                                if self.logger:
+                                    self.logger.debug(
+                                        f"Added worker. Current workers: {len(self._workers)}"
+                                    )
+            # Remove workers if needed
+            if (
+                self._use_dynamic_workers
+                and self._queue.qsize() < len(self._workers) - 1
+                and len(self._workers) > self._min_workers
+            ):
+                self._queue.put_nowait(None)
+                self._workers.pop()
+                if self.logger:
+                    self.logger.debug(
+                        f"Removed worker. Current workers: {len(self._workers)}"
+                    )
 
             self._queue.task_done()
 
@@ -282,12 +324,11 @@ class AsyncTreeExecutor:
         Runs the tree with the specified number of workers.
         """
         self._queue.put_nowait(self.root)
-
-        workers = [
+        self._workers = [
             asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
         ]
 
-        if len(workers) == 0:
+        if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
         if self.logger:
@@ -297,7 +338,7 @@ class AsyncTreeExecutor:
 
         await self._queue.join()
         await self.__stop_all_workers()
-        await asyncio.gather(*workers, return_exceptions=True)
+        await asyncio.gather(*self._workers, return_exceptions=True)
 
         if self.logger:
             self.logger.debug("Tree execution complete.")

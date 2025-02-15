@@ -1,9 +1,13 @@
 import asyncio
 import asyncio.log
-from logging import Logger
+from logging import Logger, getLogger
 from typing import Any, Optional
+from uuid import uuid4
+
 
 from .components import Node, PickerNode, UnionNode
+
+logger = getLogger("grafo")
 
 
 class AsyncTreeExecutor:
@@ -140,9 +144,32 @@ class AsyncTreeExecutor:
         }
 
         The structure can go on indefinitely.
+
+        NOTE: If the tree contains more than one node in the 1st level, the executor will
+        inject a mockup root node and use it as the root of the tree.
         """
-        if len(tree_dict) != 1:
-            raise ValueError("'tree_dict' must contain exactly one root node.")
+        if self._root:
+            raise ValueError(
+                "A root has been provided, indicating a manual tree construction. Cannot use the | operator syntax."
+            )
+
+        if len(tree_dict) > 1:
+            logger.warning(
+                "Tree contains more than one node in the 1st level. Defaulting to a mockup root node."
+            )
+
+            async def mockup_coroutine(name):
+                return "root mockup"
+
+            tree_dict = {
+                Node(
+                    uuid=str(uuid4()),
+                    metadata={
+                        "__mockup__": True,
+                    },
+                    coroutine=mockup_coroutine,
+                ): tree_dict
+            }
 
         def connect_children(
             parent_node: Node, children_iterable: dict[Node, Any] | list[Node]

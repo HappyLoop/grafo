@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, List, Optional, Union
 from uuid import uuid4
 
@@ -6,6 +7,8 @@ import pytest
 
 from grafo.trees import AsyncTreeExecutor, Node, PickerNode, UnionNode
 from grafo._internal import logger
+
+logger.setLevel(logging.DEBUG)
 
 
 # Auxiliary functions
@@ -91,7 +94,7 @@ async def test_manual_tree():
     child_node1.connect(grandchild_node1)
     child_node1.connect(grandchild_node2)
 
-    executor = AsyncTreeExecutor(root=root_node, num_workers=3, logger=logger)
+    executor = AsyncTreeExecutor(root=root_node, num_workers=3)
     result = await executor.run()
 
     # Assert result
@@ -127,7 +130,7 @@ async def test_with_picker_node():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(logger=logger)
+    executor = AsyncTreeExecutor()
     tree = executor | nodes
     result = await tree.run()
 
@@ -164,7 +167,7 @@ async def test_with_union_node():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(logger=logger)
+    executor = AsyncTreeExecutor()
     tree = executor | nodes
     result = await tree.run()
 
@@ -200,7 +203,7 @@ async def test_error_cutoff_branch():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(cutoff_branch_on_error=True, logger=logger)
+    executor = AsyncTreeExecutor(cutoff_branch_on_error=True)
     tree = executor | nodes
     result = await tree.run()
 
@@ -230,7 +233,7 @@ async def test_error_quit_tree():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(quit_tree_on_error=True, logger=logger)
+    executor = AsyncTreeExecutor(quit_tree_on_error=True)
     tree = executor | nodes
     result = await tree.run()
 
@@ -269,7 +272,7 @@ async def test_union_node_timeout():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(logger=logger, quit_tree_on_error=True)
+    executor = AsyncTreeExecutor(quit_tree_on_error=True)
     tree = executor | nodes
     result = await tree.run()
 
@@ -279,3 +282,39 @@ async def test_union_node_timeout():
     nodes_uuids = [root_node.uuid, child_node1.uuid]
     assert all(node_uuid in result.keys() for node_uuid in nodes_uuids)
     logger.debug(result)
+
+
+@pytest.mark.asyncio
+async def test_run_and_yield():
+    """
+    Test the AsyncTreeExecutor's run_and_yield method to ensure it yields results as they are set.
+    """
+    root_node = create_node("root", mockup_coroutine)
+    child_node1 = create_node("child1", mockup_coroutine)
+    grandchild_node1 = create_node("grandchild1", mockup_coroutine)
+    grandchild_node2 = create_node("grandchild2", mockup_coroutine)
+
+    # Manually connecting nodes
+    nodes = {
+        root_node: {
+            child_node1: [grandchild_node1, grandchild_node2],
+        }
+    }
+    executor = AsyncTreeExecutor(name="Yielding Tree")
+    tree = executor | nodes
+    results = []
+
+    async for node_uuid, result in tree.yielding():
+        results.append((node_uuid, result))
+        logger.debug(f"Yielded: {node_uuid} -> {result}")
+
+    # Assert that all nodes have been processed and yielded
+    nodes_uuids = [
+        root_node.uuid,
+        child_node1.uuid,
+        grandchild_node1.uuid,
+        grandchild_node2.uuid,
+    ]
+    yielded_uuids = [uuid for uuid, _ in results]
+    assert all(node_uuid in yielded_uuids for node_uuid in nodes_uuids)
+    logger.debug("All nodes yielded successfully.")

@@ -1,13 +1,11 @@
 import asyncio
 import asyncio.log
-from logging import Logger, getLogger
 from typing import Any, Optional
 from uuid import uuid4
+from grafo._internal import logger
 
 
 from .components import Node, PickerNode, UnionNode
-
-logger = getLogger("grafo")
 
 
 class AsyncTreeExecutor:
@@ -37,7 +35,6 @@ class AsyncTreeExecutor:
         min_workers: int = 1,
         max_workers: int = 10,
         use_dynamic_workers: bool = True,
-        logger: Logger | None = None,
         cutoff_branch_on_error: bool = False,
         quit_tree_on_error: bool = False,
     ):
@@ -61,7 +58,6 @@ class AsyncTreeExecutor:
         self._workers = []
         self._output = dict()
 
-        self._logger = logger
         self._cutoff_branch_on_error = cutoff_branch_on_error
         self._quit_tree_on_error = quit_tree_on_error
         self._visited_nodes = set()
@@ -97,10 +93,6 @@ class AsyncTreeExecutor:
     @property
     def output(self):
         return self._output
-
-    @property
-    def logger(self):
-        return self._logger
 
     @property
     def cutoff_branch_on_error(self):
@@ -242,25 +234,22 @@ class AsyncTreeExecutor:
             # Run the node
             try:
                 if node.uuid not in self._visited_nodes:
+                    logger.debug(f"Running {node}")
                     result = await node.run()
             except Exception as e:
                 if self._quit_tree_on_error:
                     self._graceful_stop_flag = True
                     self._graceful_stop_nodes.add(node)
                     self._queue.task_done()
-                    if self._logger:
-                        self._logger.error(f"Quit at {node}. Error: {e}")
+                    logger.error(f"Quit at {node}. Error: {e}")
                     break
 
                 elif self._cutoff_branch_on_error:
                     self._queue.task_done()
-
-                    if self._logger:
-                        self._logger.error(f"Cutoff at {node}. Error: {e}")
+                    logger.error(f"Cutoff at {node}. Error: {e}")
                     break
-
-                elif self._logger:
-                    self._logger.error(f"Error on {node}: {e}")
+                else:
+                    logger.error(f"Error on {node}: {e}")
             finally:
                 self._visited_nodes.add(node.uuid)
 
@@ -313,10 +302,9 @@ class AsyncTreeExecutor:
                             ):
                                 new_worker = asyncio.create_task(self.__worker())
                                 self._workers.append(new_worker)
-                                if self.logger:
-                                    self.logger.debug(
-                                        f"Added worker. Current workers: {len(self._workers)}"
-                                    )
+                                logger.debug(
+                                    f"Added worker. Current workers: {len(self._workers)}"
+                                )
             # Remove workers if needed
             if (
                 self._use_dynamic_workers
@@ -325,10 +313,7 @@ class AsyncTreeExecutor:
             ):
                 self._queue.put_nowait(None)
                 self._workers.pop()
-                if self.logger:
-                    self.logger.debug(
-                        f"Removed worker. Current workers: {len(self._workers)}"
-                    )
+                logger.debug(f"Removed worker. Current workers: {len(self._workers)}")
 
             self._queue.task_done()
 
@@ -358,20 +343,55 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        if self.logger:
-            self.logger.debug(
-                f"Running tree{' {}'.format(self.name) if self.name else ''}..."
-            )
+        logger.debug(f"Running tree{' {}'.format(self.name) if self.name else ''}...")
 
         await self._queue.join()
         await self.__stop_all_workers()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
-        if self.logger:
-            self.logger.debug("Tree execution complete.")
-            if self._graceful_stop_flag:
-                self.logger.debug(
-                    f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
-                )
+        logger.debug("Tree execution complete.")
+        if self._graceful_stop_flag:
+            logger.debug(
+                f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
+            )
 
         return self._output
+
+    async def yielding(self, latency: float = 0.05):
+        """
+        Runs the tree with the specified number of workers and yields results as they are set.
+        """
+        self._queue.put_nowait(self.root)
+        self._workers = [
+            asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
+        ]
+
+        if len(self._workers) == 0:
+            raise ValueError("No workers were created.")
+
+        logger.debug(f"Running {' {}'.format(self.name) if self.name else ''}...")
+
+        while any(not worker.done() for worker in self._workers):
+            for node_uuid, result in list(self._output.items()):
+                yield node_uuid, result
+                del self._output[
+                    node_uuid
+                ]  # ? REASON: Remove yielded result to avoid duplication
+
+            await asyncio.sleep(
+                latency
+            )  # ? REASON: Small delay to prevent busy-waiting
+
+        await self._queue.join()
+        await self.__stop_all_workers()
+        await asyncio.gather(*self._workers, return_exceptions=True)
+
+        logger.debug("Tree execution complete.")
+        if self._graceful_stop_flag:
+            logger.debug(
+                f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
+            )
+
+        # ? REASON: Yield any remaining results
+        for node_uuid, result in self._output.items():
+            yield node_uuid, result

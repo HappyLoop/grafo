@@ -1,6 +1,6 @@
 import asyncio
 import asyncio.log
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 from uuid import uuid4
 from grafo._internal import logger
 
@@ -331,7 +331,7 @@ class AsyncTreeExecutor:
         if not isinstance(obj, Node):
             raise ValueError(f"Object is not a Node instance. Object: {obj}")
 
-    async def run(self):
+    async def run(self) -> dict[str, Any]:
         """
         Runs the tree with the specified number of workers.
         """
@@ -357,7 +357,9 @@ class AsyncTreeExecutor:
 
         return self._output
 
-    async def yielding(self, latency: float = 0.05):
+    async def yielding(
+        self, latency: float = 0.05
+    ) -> AsyncGenerator[tuple[str, Any], None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, List, Optional, Union
 from uuid import uuid4
 
@@ -6,6 +7,8 @@ import pytest
 
 from grafo.trees import AsyncTreeExecutor, Node, PickerNode, UnionNode
 from grafo._internal import logger
+
+logger.setLevel(logging.DEBUG)
 
 
 # Auxiliary functions
@@ -279,3 +282,39 @@ async def test_union_node_timeout():
     nodes_uuids = [root_node.uuid, child_node1.uuid]
     assert all(node_uuid in result.keys() for node_uuid in nodes_uuids)
     logger.debug(result)
+
+
+@pytest.mark.asyncio
+async def test_run_and_yield():
+    """
+    Test the AsyncTreeExecutor's run_and_yield method to ensure it yields results as they are set.
+    """
+    root_node = create_node("root", mockup_coroutine)
+    child_node1 = create_node("child1", mockup_coroutine)
+    grandchild_node1 = create_node("grandchild1", mockup_coroutine)
+    grandchild_node2 = create_node("grandchild2", mockup_coroutine)
+
+    # Manually connecting nodes
+    nodes = {
+        root_node: {
+            child_node1: [grandchild_node1, grandchild_node2],
+        }
+    }
+    executor = AsyncTreeExecutor(name="Yielding Tree")
+    tree = executor | nodes
+    results = []
+
+    async for node_uuid, result in tree.yielding():
+        results.append((node_uuid, result))
+        logger.debug(f"Yielded: {node_uuid} -> {result}")
+
+    # Assert that all nodes have been processed and yielded
+    nodes_uuids = [
+        root_node.uuid,
+        child_node1.uuid,
+        grandchild_node1.uuid,
+        grandchild_node2.uuid,
+    ]
+    yielded_uuids = [uuid for uuid, _ in results]
+    assert all(node_uuid in yielded_uuids for node_uuid in nodes_uuids)
+    logger.debug("All nodes yielded successfully.")

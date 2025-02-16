@@ -356,3 +356,42 @@ class AsyncTreeExecutor:
             )
 
         return self._output
+
+    async def yielding(self, latency: float = 0.05):
+        """
+        Runs the tree with the specified number of workers and yields results as they are set.
+        """
+        self._queue.put_nowait(self.root)
+        self._workers = [
+            asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
+        ]
+
+        if len(self._workers) == 0:
+            raise ValueError("No workers were created.")
+
+        logger.debug(f"Running {' {}'.format(self.name) if self.name else ''}...")
+
+        while any(not worker.done() for worker in self._workers):
+            for node_uuid, result in list(self._output.items()):
+                yield node_uuid, result
+                del self._output[
+                    node_uuid
+                ]  # ? REASON: Remove yielded result to avoid duplication
+
+            await asyncio.sleep(
+                latency
+            )  # ? REASON: Small delay to prevent busy-waiting
+
+        await self._queue.join()
+        await self.__stop_all_workers()
+        await asyncio.gather(*self._workers, return_exceptions=True)
+
+        logger.debug("Tree execution complete.")
+        if self._graceful_stop_flag:
+            logger.debug(
+                f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
+            )
+
+        # ? REASON: Yield any remaining results
+        for node_uuid, result in self._output.items():
+            yield node_uuid, result

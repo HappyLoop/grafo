@@ -335,7 +335,7 @@ class AsyncTreeExecutor:
         """
         Runs the tree with the specified number of workers.
         """
-        self._queue.put_nowait(self.root)
+        self._queue.put_nowait(self._root)
         self._workers = [
             asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
         ]
@@ -363,7 +363,7 @@ class AsyncTreeExecutor:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """
-        self._queue.put_nowait(self.root)
+        self._queue.put_nowait(self._root)
         self._workers = [
             asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
         ]

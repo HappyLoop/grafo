@@ -171,6 +171,8 @@ class Node:
                 "A UnionNode cannot have a PickerNode as a child. Use a PickerNode as a parent instead."
             )
         self.children.append(child)
+        if isinstance(child, UnionNode):
+            child.add_parent(self)
         if self._on_connect_callback:
             callback, fixed_kwargs = self._on_connect_callback
             callback(child_=child, **fixed_kwargs)

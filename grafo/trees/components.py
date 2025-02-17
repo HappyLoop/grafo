@@ -3,13 +3,15 @@ from typing import Any, Callable, Optional, Self, Type
 
 import asyncio
 
+from grafo._internal import logger
+
 
 def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
     """
     Decorator that prevents a method from being called if the node is already running.
     """
 
-    def wrapper(self, *args: Any, **kwargs: Any) -> Any:
+    def wrapper(self: "Node", *args: Any, **kwargs: Any) -> Any:
         if not self._is_running:
             return func(self, *args, **kwargs)
         # NOTE: on ELSE, error is not raised so as to not trigger branch/tree cutoff
@@ -48,6 +50,10 @@ class Node:
                           No additional timed parameters are provided, but fixed kwargs can be passed.
     :param on_before_run_kwargs: Optional; additional fixed keyword arguments for the `on_before_run` callback.
 
+    :param on_after_run: Optional; a callback triggered after the node's coroutine is executed via `run()`.
+                         No additional timed parameters are provided, but fixed kwargs can be passed.
+    :param on_after_run_kwargs: Optional; additional fixed keyword arguments for the `on_after_run` callback.
+
     **Note:** For each event callback in Node, if an associated function passes a parameter named `param`,
             the callback will receive that parameter as `param_`. For example, in `set_output(output)`,
             the callback is invoked with `output_=output`.
@@ -71,6 +77,8 @@ class Node:
         on_update_kwargs: Optional[dict[str, Any]] = None,
         on_before_run: Optional[Callable[..., Any]] = None,
         on_before_run_kwargs: Optional[dict[str, Any]] = None,
+        on_after_run: Optional[Callable[..., Any]] = None,
+        on_after_run_kwargs: Optional[dict[str, Any]] = None,
     ):
         self.__validate_param(uuid, "uuid", str)
         self.__validate_param(args, "args", list, allow_none=True)
@@ -90,8 +98,8 @@ class Node:
         self._children = []
         self._is_running = False
         self._forward_output = forward_output
+        self._event = asyncio.Event()
 
-        # Initialize event callbacks from constructor parameters.
         self._on_connect_callback = (
             (on_connect, on_connect_kwargs or {}) if on_connect is not None else None
         )
@@ -106,6 +114,11 @@ class Node:
         self._on_before_run_callback = (
             (on_before_run, on_before_run_kwargs or {})
             if on_before_run is not None
+            else None
+        )
+        self._on_after_run_callback = (
+            (on_after_run, on_after_run_kwargs or {})
+            if on_after_run is not None
             else None
         )
 
@@ -159,6 +172,37 @@ class Node:
                 f"'{param_name}' is required and must be of type {expected_type.__name__}."
             )
 
+    def _run_event(self, callback: Callable, *args: Any, **kwargs: Any):
+        """
+        Executes an event callback which can be either synchronous or asynchronous.
+        It checks whether we're in an async context (i.e. if there is a current task)
+        and returns an awaitable if so; otherwise it runs the callback completely.
+
+        If in an async context and the callback is synchronous, its result is wrapped
+        as an awaitable via a zero-second asyncio.sleep call.
+        """
+        in_async = asyncio.current_task() is not None
+        if inspect.iscoroutinefunction(callback):
+            coro = callback(*args, **kwargs)
+            if in_async:
+                # In an async context, return the coroutine so the caller can await it.
+                return coro
+            else:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    # No running loop; run the coroutine to completion.
+                    return asyncio.run(coro)
+                else:
+                    return loop.run_until_complete(coro)
+        else:
+            result = callback(*args, **kwargs)
+            if in_async:
+                # Wrap synchronous result as an awaitable (immediately available).
+                return asyncio.sleep(0, result=result)
+            else:
+                return result
+
     @safe_execution
     def connect(self, child: Self):
         """
@@ -172,10 +216,10 @@ class Node:
             )
         self.children.append(child)
         if isinstance(child, UnionNode):
-            child.add_parent(self)
+            child._add_event(self._event)
         if self._on_connect_callback:
             callback, fixed_kwargs = self._on_connect_callback
-            callback(child_=child, **fixed_kwargs)
+            self._run_event(callback, child_=child, **fixed_kwargs)
 
     @safe_execution
     def disconnect(self, child: Self):
@@ -185,9 +229,11 @@ class Node:
         if not issubclass(type(child), Node):
             raise ValueError("The 'child' parameter must be a Node instance.")
         self.children.remove(child)
+        if isinstance(child, UnionNode):
+            child._remove_event(self._event)
         if self._on_disconnect_callback:
             callback, fixed_kwargs = self._on_disconnect_callback
-            callback(child_=child, **fixed_kwargs)
+            self._run_event(callback, child_=child, **fixed_kwargs)
 
     @safe_execution
     def update(
@@ -197,52 +243,70 @@ class Node:
         coroutine: Optional[Callable] = None,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
+        append_mode: bool = False,
     ):
         """
         Updates the node with new data.
+
+        :param metadata: Optional; a dict containing the node's metadata.
+        :param children: Optional; a list of children nodes.
+        :param coroutine: Optional; a coroutine function to execute.
+        :param args: Optional; a list of arguments to pass to the coroutine.
+        :param kwargs: Optional; a dict of keyword arguments to pass to the coroutine.
+        :param append_mode: Optional; if True, the args and kwargs will be appended to the existing data.
         """
+
         if metadata is not None:
-            if "name" not in metadata or "description" not in metadata:
-                raise ValueError("metadata must contain 'name' and 'description' keys.")
             self._metadata = metadata
+
+        if children is not None:
+            self._children = children
+
+        if coroutine is not None:
+            if not inspect.iscoroutinefunction(coroutine):
+                raise ValueError(
+                    "The 'coroutine' parameter must be a coroutine function (async function)."
+                )
+            self._coroutine = coroutine
 
         self.__validate_param(args, "args", list, allow_none=True)
         self.__validate_param(kwargs, "kwargs", dict, allow_none=True)
 
-        if children and any(not isinstance(child, Node) for child in children):
-            raise ValueError("'children' parameter must be a list of <Node> instances")
-
-        if children:
-            self._children = children
-
-        if inspect.iscoroutinefunction(coroutine):
-            self._coroutine = coroutine
-
-        self._args = args if args is not None else []
-        self._kwargs = kwargs if kwargs is not None else {}
+        if append_mode:
+            if args:
+                self._args.extend(args)
+            if kwargs:
+                self._kwargs.update(kwargs)
+        else:
+            self._args = args if args is not None else []
+            self._kwargs = kwargs if kwargs is not None else {}
 
         if self._on_update_callback:
             callback, fixed_kwargs = self._on_update_callback
-            callback(
-                children_=children,
-                **fixed_kwargs,
-            )
+            self._run_event(callback, children_=children, **fixed_kwargs)
 
     @safe_execution
     async def run(self) -> Any:
         """
         Asynchronously runs the coroutine of in this node.
         """
+        logger.debug(f"Running {self}")
         if self._on_before_run_callback:
             callback, fixed_kwargs = self._on_before_run_callback
-            callback(**fixed_kwargs)
+            # In an async context, await the event callback.
+            await self._run_event(callback, **fixed_kwargs)
 
-        self._is_running = True
         try:
-            result = await self._coroutine(*self.args, **self.kwargs)  # type: ignore
+            self._is_running = True
+            result = await self._coroutine(*self.args, **self.kwargs)
             self._output = result
+            self._event.set()
             return result
         finally:
+            if self._on_after_run_callback:
+                callback, fixed_kwargs = self._on_after_run_callback
+                # Await the after-run event callback.
+                await self._run_event(callback, output_=result, **fixed_kwargs)
             self._is_running = False
 
 
@@ -276,6 +340,10 @@ class PickerNode(Node):
     :param on_before_run: Optional; a callback triggered before the node's coroutine is executed via `run()`.
                           No additional timed parameters are provided, but fixed kwargs can be passed.
     :param on_before_run_kwargs: Optional; additional fixed keyword arguments for the `on_before_run` callback.
+
+    :param on_after_run: Optional; a callback triggered after the node's coroutine is executed via `run()`.
+                         No additional timed parameters are provided, but fixed kwargs can be passed.
+    :param on_after_run_kwargs: Optional; additional fixed keyword arguments for the `on_after_run` callback.
     """
 
     def __init__(
@@ -294,6 +362,8 @@ class PickerNode(Node):
         on_update_kwargs: Optional[dict[str, Any]] = None,
         on_before_run: Optional[Callable[..., Any]] = None,
         on_before_run_kwargs: Optional[dict[str, Any]] = None,
+        on_after_run: Optional[Callable[..., Any]] = None,
+        on_after_run_kwargs: Optional[dict[str, Any]] = None,
     ):
         super().__init__(
             uuid,
@@ -310,6 +380,8 @@ class PickerNode(Node):
             on_update_kwargs=on_update_kwargs,
             on_before_run=on_before_run,
             on_before_run_kwargs=on_before_run_kwargs,
+            on_after_run=on_after_run,
+            on_after_run_kwargs=on_after_run_kwargs,
         )
 
     def __repr__(self) -> str:
@@ -322,7 +394,8 @@ class PickerNode(Node):
         """
         if self._on_before_run_callback:
             callback, fixed_kwargs = self._on_before_run_callback
-            callback(**fixed_kwargs)
+            # Await the before-run callback via _run_event.
+            await self._run_event(callback, **fixed_kwargs)
 
         try:
             self._is_running = True
@@ -339,6 +412,10 @@ class PickerNode(Node):
             self._output = result
             return result
         finally:
+            if self._on_after_run_callback:
+                callback, fixed_kwargs = self._on_after_run_callback
+                # Await the after-run callback via _run_event.
+                await self._run_event(callback, output_=result, **fixed_kwargs)
             self._is_running = False
 
 
@@ -351,8 +428,8 @@ class UnionNode(Node):
     :param coroutine: The coroutine function to execute.
     :param args: The arguments to pass to the coroutine.
     :param kwargs: The keyword arguments to pass to the coroutine.
-    :param parents: The parent nodes of this node.
-    :param parent_timeout: The timeout for waiting for parents to complete.
+    :param parent_events: The events to wait for from the parent nodes.
+    :param timeout: The timeout for waiting for parents to complete.
     :param forward_output: Whether to forward the output of this node to its children as arguments.
 
     Additionally, the following optional event callback parameters can be passed to the constructor:
@@ -374,6 +451,10 @@ class UnionNode(Node):
                           No additional timed parameters are provided, but fixed kwargs can be passed.
     :param on_before_run_kwargs: Optional; additional fixed keyword arguments for the `on_before_run` callback.
 
+    :param on_after_run: Optional; a callback triggered after the node's coroutine is executed via `run()`.
+                         No additional timed parameters are provided, but fixed kwargs can be passed.
+    :param on_after_run_kwargs: Optional; additional fixed keyword arguments for the `on_after_run` callback.
+
     NOTE: USE WITH CARE! This node can cause deadlocks if not used properly.
     """
 
@@ -384,8 +465,8 @@ class UnionNode(Node):
         coroutine: Callable,
         args: Optional[list[Any]] = None,
         kwargs: Optional[dict[str, Any]] = None,
-        parents: Optional[list["UnionNode"]] = None,
-        parent_timeout: Optional[float] = None,
+        parent_events: Optional[list[asyncio.Event]] = None,
+        timeout: Optional[float] = None,
         forward_output: Optional[bool] = False,
         on_connect: Optional[Callable[..., Any]] = None,
         on_connect_kwargs: Optional[dict[str, Any]] = None,
@@ -395,6 +476,8 @@ class UnionNode(Node):
         on_update_kwargs: Optional[dict[str, Any]] = None,
         on_before_run: Optional[Callable[..., Any]] = None,
         on_before_run_kwargs: Optional[dict[str, Any]] = None,
+        on_after_run: Optional[Callable[..., Any]] = None,
+        on_after_run_kwargs: Optional[dict[str, Any]] = None,
     ):
         super().__init__(
             uuid,
@@ -411,83 +494,52 @@ class UnionNode(Node):
             on_update_kwargs=on_update_kwargs,
             on_before_run=on_before_run,
             on_before_run_kwargs=on_before_run_kwargs,
+            on_after_run=on_after_run,
+            on_after_run_kwargs=on_after_run_kwargs,
         )
-        self._parents = parents if parents is not None else []
-        self._parent_outputs = {}
-        self._num_parents_completed = 0
+        self._parent_events = parent_events if parent_events is not None else []
         self._forward_output = forward_output
-        self._parent_timeout = parent_timeout
-        self._timeout_flag = False
+        self._timeout = timeout
 
     def __repr__(self) -> str:
-        return f"UnionNode(uuid={self.uuid}, metadata={self.metadata}, output={self.output})"
+        return f"UnionNode(uuid={self.uuid}, metadata={self.metadata}, timeout={self._timeout}, output={self.output})"
 
     @property
-    def parents(self):
-        return self._parents
+    def parent_events(self):
+        return self._parent_events
 
     @safe_execution
-    def append_arguments(
-        self,
-        args: Optional[list[Any]] = None,
-        kwargs: Optional[dict[str, Any]] = None,
-    ):
+    def _add_event(self, event: asyncio.Event):
         """
-        Appends arguments to the node.
+        Adds an event to this node so that it waits for it to be set before running.
         """
-        if args:
-            self._args.extend(args)
-
-        if kwargs:
-            self._kwargs.update(kwargs)
+        self._parent_events.append(event)
 
     @safe_execution
-    def add_parent(self, parent: "UnionNode"):
+    def _remove_event(self, event: asyncio.Event):
         """
-        Adds a parent to this node.
+        Removes an event from this node so that it no longer waits for it to be set before running.
         """
-        if not issubclass(type(parent), Node):
-            raise ValueError("The 'parent' parameter must be a UnionNode instance.")
-        self._parents.append(parent)
-
-    @safe_execution
-    def parent_completed(self, parent_uuid: str, output: Any):
-        """
-        Marks a parent as completed and stores its output.
-        """
-        self._parent_outputs[parent_uuid] = output
-        self._num_parents_completed += 1
+        self._parent_events.remove(event)
 
     @safe_execution
     async def run(self) -> Any:
         """
         Waits for all parents to complete before running the coroutine.
         """
-        self._is_running = True
-        try:
-            await asyncio.wait_for(
-                self._wait_for_parents(), timeout=self._parent_timeout
+        if not self._timeout:
+            logger.warning(
+                "UnionNode %s has no timeout. This will cause a deadlock if one of its parent coroutines does not finish.",
+                self.uuid,
             )
-        except asyncio.TimeoutError:
-            self._timeout_flag = True
-            self._is_running = False  # Ensure the running flag is reset
-            raise asyncio.TimeoutError
-
-        if self._on_before_run_callback:
-            callback, fixed_kwargs = self._on_before_run_callback
-            callback(**fixed_kwargs)
+        logger.debug(f"Number of events to wait for: {len(self.parent_events)}")
+        await asyncio.wait_for(
+            asyncio.gather(*[e.wait() for e in self.parent_events]),
+            timeout=self._timeout,
+        )
 
         try:
-            async with asyncio.Lock():
-                result = await self._coroutine(
-                    *self.args,
-                    **self.kwargs,
-                )
-            self._output = result
-            return result
-        finally:
-            self._is_running = False
-
-    async def _wait_for_parents(self):
-        while self._num_parents_completed < len(self.parents):
-            await asyncio.sleep(0.1)
+            return await super().run()
+        except Exception as e:
+            self._children = []
+            raise e

@@ -48,10 +48,6 @@ class Node:
                           No additional timed parameters are provided, but fixed kwargs can be passed.
     :param on_before_run_kwargs: Optional; additional fixed keyword arguments for the `on_before_run` callback.
 
-    :param on_result: Optional; a callback triggered when the node's output is set via `set_output()`.
-                      The callback receives the output as `output_`.
-    :param on_result_kwargs: Optional; additional fixed keyword arguments for the `on_result` callback.
-
     **Note:** For each event callback in Node, if an associated function passes a parameter named `param`,
             the callback will receive that parameter as `param_`. For example, in `set_output(output)`,
             the callback is invoked with `output_=output`.
@@ -75,8 +71,6 @@ class Node:
         on_update_kwargs: Optional[dict[str, Any]] = None,
         on_before_run: Optional[Callable[..., Any]] = None,
         on_before_run_kwargs: Optional[dict[str, Any]] = None,
-        on_result: Optional[Callable[..., Any]] = None,
-        on_result_kwargs: Optional[dict[str, Any]] = None,
     ):
         self.__validate_param(uuid, "uuid", str)
         self.__validate_param(args, "args", list, allow_none=True)
@@ -114,12 +108,9 @@ class Node:
             if on_before_run is not None
             else None
         )
-        self._on_result_callback = (
-            (on_result, on_result_kwargs or {}) if on_result is not None else None
-        )
 
     def __repr__(self) -> str:
-        return f"Node(uuid={self.uuid}, metadata={self.metadata})"
+        return f"Node(uuid={self.uuid}, metadata={self.metadata}, output={self.output})"
 
     @property
     def uuid(self):
@@ -148,14 +139,6 @@ class Node:
     @property
     def output(self):
         return self._output
-
-    @property
-    def forward_output(self):
-        return self._forward_output
-
-    @property
-    def is_running(self):
-        return self._is_running
 
     def __validate_param(
         self, param: Any, param_name: str, expected_type: Type, allow_none: bool = False
@@ -255,22 +238,10 @@ class Node:
         self._is_running = True
         try:
             result = await self._coroutine(*self.args, **self.kwargs)  # type: ignore
+            self._output = result
+            return result
         finally:
             self._is_running = False
-        return result
-
-    @safe_execution
-    def set_output(self, output: Any):
-        """
-        Sets the output of the node.
-
-        Event Callback: on_result callback is triggered after setting the node's output.
-        Naming Convention: The argument 'output' is passed as 'output_' to the callback.
-        """
-        self._output = output
-        if self._on_result_callback:
-            callback, fixed_kwargs = self._on_result_callback
-            callback(output_=output, **fixed_kwargs)
 
 
 class PickerNode(Node):
@@ -303,10 +274,6 @@ class PickerNode(Node):
     :param on_before_run: Optional; a callback triggered before the node's coroutine is executed via `run()`.
                           No additional timed parameters are provided, but fixed kwargs can be passed.
     :param on_before_run_kwargs: Optional; additional fixed keyword arguments for the `on_before_run` callback.
-
-    :param on_result: Optional; a callback triggered when the node's output is set via `set_output()`.
-                      The callback receives the output as `output_`.
-    :param on_result_kwargs: Optional; additional fixed keyword arguments for the `on_result` callback.
     """
 
     def __init__(
@@ -325,8 +292,6 @@ class PickerNode(Node):
         on_update_kwargs: Optional[dict[str, Any]] = None,
         on_before_run: Optional[Callable[..., Any]] = None,
         on_before_run_kwargs: Optional[dict[str, Any]] = None,
-        on_result: Optional[Callable[..., Any]] = None,
-        on_result_kwargs: Optional[dict[str, Any]] = None,
     ):
         super().__init__(
             uuid,
@@ -343,12 +308,10 @@ class PickerNode(Node):
             on_update_kwargs=on_update_kwargs,
             on_before_run=on_before_run,
             on_before_run_kwargs=on_before_run_kwargs,
-            on_result=on_result,
-            on_result_kwargs=on_result_kwargs,
         )
 
     def __repr__(self) -> str:
-        return f"PickerNode(uuid={self.uuid}, metadata={self.metadata})"
+        return f"PickerNode(uuid={self.uuid}, metadata={self.metadata}, output={self.output})"
 
     @safe_execution
     async def run(self) -> list["Node"]:
@@ -359,15 +322,22 @@ class PickerNode(Node):
             callback, fixed_kwargs = self._on_before_run_callback
             callback(**fixed_kwargs)
 
-        result = await self.coroutine(self, self.children, *self.args, **self.kwargs)
-        if not isinstance(result, list):
-            raise ValueError("The picker coroutine must return a list of children.")
-        for child in result:
-            if not isinstance(child, Node):
-                raise ValueError(
-                    "The picker coroutine must return a list of Node instances."
-                )
-        return result
+        try:
+            self._is_running = True
+            result = await self.coroutine(
+                self, self.children, *self.args, **self.kwargs
+            )
+            if not isinstance(result, list):
+                raise ValueError("The picker coroutine must return a list of children.")
+            for child in result:
+                if not isinstance(child, Node):
+                    raise ValueError(
+                        "The picker coroutine must return a list of Node instances."
+                    )
+            self._output = result
+            return result
+        finally:
+            self._is_running = False
 
 
 class UnionNode(Node):
@@ -402,14 +372,7 @@ class UnionNode(Node):
                           No additional timed parameters are provided, but fixed kwargs can be passed.
     :param on_before_run_kwargs: Optional; additional fixed keyword arguments for the `on_before_run` callback.
 
-    :param on_result: Optional; a callback triggered when the node's output is set via `set_output()`.
-                      The callback receives the output as `output_`.
-    :param on_result_kwargs: Optional; additional fixed keyword arguments for the `on_result` callback.
-
-
-
-    >>> USE WITH CARE!
-    >>> This node can cause deadlocks if not used properly.
+    NOTE: USE WITH CARE! This node can cause deadlocks if not used properly.
     """
 
     def __init__(
@@ -430,8 +393,6 @@ class UnionNode(Node):
         on_update_kwargs: Optional[dict[str, Any]] = None,
         on_before_run: Optional[Callable[..., Any]] = None,
         on_before_run_kwargs: Optional[dict[str, Any]] = None,
-        on_result: Optional[Callable[..., Any]] = None,
-        on_result_kwargs: Optional[dict[str, Any]] = None,
     ):
         super().__init__(
             uuid,
@@ -448,8 +409,6 @@ class UnionNode(Node):
             on_update_kwargs=on_update_kwargs,
             on_before_run=on_before_run,
             on_before_run_kwargs=on_before_run_kwargs,
-            on_result=on_result,
-            on_result_kwargs=on_result_kwargs,
         )
         self._parents = parents if parents is not None else []
         self._parent_outputs = {}
@@ -459,23 +418,11 @@ class UnionNode(Node):
         self._timeout_flag = False
 
     def __repr__(self) -> str:
-        return f"UnionNode(uuid={self.uuid}, metadata={self.metadata})"
+        return f"UnionNode(uuid={self.uuid}, metadata={self.metadata}, output={self.output})"
 
     @property
     def parents(self):
         return self._parents
-
-    @property
-    def parent_outputs(self):
-        return self._parent_outputs
-
-    @property
-    def num_parents_completed(self):
-        return self._num_parents_completed
-
-    @property
-    def timeout_flag(self):
-        return self._timeout_flag
 
     @safe_execution
     def append_arguments(
@@ -534,10 +481,11 @@ class UnionNode(Node):
                     *self.args,
                     **self.kwargs,
                 )
+            self._output = result
+            return result
         finally:
             self._is_running = False
-        return result
 
     async def _wait_for_parents(self):
-        while self.num_parents_completed < len(self.parents):
+        while self._num_parents_completed < len(self.parents):
             await asyncio.sleep(0.1)

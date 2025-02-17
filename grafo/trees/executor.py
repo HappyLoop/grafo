@@ -70,54 +70,6 @@ class AsyncTreeExecutor:
     def name(self):
         return self._name
 
-    @property
-    def root(self):
-        return self._root
-
-    @property
-    def queue(self):
-        return self._queue
-
-    @property
-    def min_workers(self):
-        return self._min_workers
-
-    @property
-    def max_workers(self):
-        return self._max_workers
-
-    @property
-    def workers(self):
-        return self._workers
-
-    @property
-    def output(self):
-        return self._output
-
-    @property
-    def cutoff_branch_on_error(self):
-        return self._cutoff_branch_on_error
-
-    @property
-    def quit_tree_on_error(self):
-        return self._quit_tree_on_error
-
-    @property
-    def visited_nodes(self):
-        return self._visited_nodes
-
-    @property
-    def enqueued_nodes(self):
-        return self._enqueued_nodes
-
-    @property
-    def global_stop_flag(self):
-        return self._graceful_stop_flag
-
-    @property
-    def graceful_stop_nodes(self):
-        return self._graceful_stop_nodes
-
     def __or__(self, tree_dict: dict[Node, Any]):
         """
         Override the `|` operator to create an instance of AsyncTreeExecutor and builds
@@ -253,8 +205,7 @@ class AsyncTreeExecutor:
             finally:
                 self._visited_nodes.add(node.uuid)
 
-            self._output[str(node.uuid)] = result
-            node.set_output(result)
+            self._output[str(node.uuid)] = node
 
             # Update children
             if isinstance(node, PickerNode):
@@ -277,7 +228,7 @@ class AsyncTreeExecutor:
                 else:
                     args.append(result)
 
-                if node.forward_output:
+                if node._forward_output:
                     if isinstance(child, UnionNode):
                         child.parent_completed(node.uuid, node.output)
                         child.append_arguments(args=args, kwargs=kwargs)
@@ -371,11 +322,11 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        logger.debug(f"Running {' {}'.format(self.name) if self.name else ''}...")
+        logger.debug(f"Running {'{}'.format(self.name) if self.name else ''}...")
 
         while any(not worker.done() for worker in self._workers):
-            for node_uuid, result in list(self._output.items()):
-                yield node_uuid, result
+            for node_uuid, node in list(self._output.items()):
+                yield node_uuid, node
                 del self._output[
                     node_uuid
                 ]  # ? REASON: Remove yielded result to avoid duplication
@@ -395,5 +346,5 @@ class AsyncTreeExecutor:
             )
 
         # ? REASON: Yield any remaining results
-        for node_uuid, result in self._output.items():
-            yield node_uuid, result
+        for node_uuid, node in self._output.items():
+            yield node_uuid, node

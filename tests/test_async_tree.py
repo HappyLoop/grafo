@@ -56,7 +56,7 @@ async def mockup_coroutine(name):
     Example coroutine function that simulates a task that takes 1 second to complete.
     """
     await asyncio.sleep(1)
-    logger.debug(f"{name} executed")
+    # logger.debug(f"{name} executed")
     return f"{name} result"
 
 
@@ -277,7 +277,7 @@ async def test_union_node_timeout():
     result = await tree.run()
 
     # Assert that the union node's timeout flag is set
-    assert union_node.timeout_flag is True
+    assert union_node._timeout_flag is True
     # Assert that the root and child nodes completed successfully
     nodes_uuids = [root_node.uuid, child_node1.uuid]
     assert all(node_uuid in result.keys() for node_uuid in nodes_uuids)
@@ -306,7 +306,7 @@ async def test_run_and_yield():
 
     async for node_uuid, result in tree.yielding():
         results.append((node_uuid, result))
-        logger.debug(f"Yielded: {node_uuid} -> {result}")
+        logger.debug(f"Yielded: {result}")
 
     # Assert that all nodes have been processed and yielded
     nodes_uuids = [

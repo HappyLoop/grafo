@@ -130,10 +130,7 @@ class AsyncTreeExecutor:
                         )
 
                     self.__validate_element(child_node)
-
                     parent_node.connect(child_node)
-                    if isinstance(child_node, UnionNode):
-                        child_node.add_parent(parent_node)
 
                     connect_children(child_node, descendants_iterable)
 
@@ -148,8 +145,6 @@ class AsyncTreeExecutor:
 
                     self.__validate_element(child_node)
                     parent_node.connect(child_node)
-                    if isinstance(child_node, UnionNode):
-                        child_node.add_parent(parent_node)
 
         for root_node, children_iterable in tree_dict.items():
             self._root = root_node
@@ -186,7 +181,6 @@ class AsyncTreeExecutor:
             # Run the node
             try:
                 if node.uuid not in self._visited_nodes:
-                    logger.debug(f"Running {node}")
                     result = await node.run()
             except Exception as e:
                 if self._quit_tree_on_error:
@@ -196,7 +190,9 @@ class AsyncTreeExecutor:
                     logger.error(f"Quit at {node}. Error: {e}")
                     break
 
-                elif self._cutoff_branch_on_error:
+                elif self._cutoff_branch_on_error or isinstance(
+                    e, asyncio.TimeoutError
+                ):
                     self._queue.task_done()
                     logger.error(f"Cutoff at {node}. Error: {e}")
                     break
@@ -229,14 +225,7 @@ class AsyncTreeExecutor:
                     args.append(result)
 
                 if node._forward_output:
-                    if isinstance(child, UnionNode):
-                        child.parent_completed(node.uuid, node.output)
-                        child.append_arguments(args=args, kwargs=kwargs)
-                    else:
-                        child.update(args=args, kwargs=kwargs)
-                else:
-                    if isinstance(child, UnionNode):
-                        child.parent_completed(node.uuid, node.output)
+                    child.update(args=args, kwargs=kwargs)
 
             # Enqueue children and adjust workers
             if not self._graceful_stop_flag:
@@ -282,7 +271,7 @@ class AsyncTreeExecutor:
         if not isinstance(obj, Node):
             raise ValueError(f"Object is not a Node instance. Object: {obj}")
 
-    async def run(self) -> dict[str, Union[Node, UnionNode, PickerNode]]:
+    async def run(self) -> list[Union[Node, UnionNode, PickerNode]]:
         """
         Runs the tree with the specified number of workers.
         """
@@ -306,11 +295,13 @@ class AsyncTreeExecutor:
                 f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
             )
 
-        return self._output
+        return list(self._output.values())
 
     async def yielding(
-        self, latency: float = 0.05
-    ) -> AsyncGenerator[tuple[str, Union[Node, UnionNode, PickerNode]], None]:
+        self,
+        stop_events: list[asyncio.Event],
+        latency: float = 0.05,
+    ) -> AsyncGenerator[Union[Node, UnionNode, PickerNode], None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """
@@ -324,9 +315,11 @@ class AsyncTreeExecutor:
 
         logger.debug(f"Running {'{}'.format(self.name) if self.name else ''}...")
 
-        while any(not worker.done() for worker in self._workers):
+        while not all(stop_event.is_set() for stop_event in stop_events) and any(
+            not worker.done() for worker in self._workers
+        ):
             for node_uuid, node in list(self._output.items()):
-                yield node_uuid, node
+                yield node
                 del self._output[
                     node_uuid
                 ]  # ? REASON: Remove yielded result to avoid duplication
@@ -346,5 +339,5 @@ class AsyncTreeExecutor:
             )
 
         # ? REASON: Yield any remaining results
-        for node_uuid, node in self._output.items():
-            yield node_uuid, node
+        for node in self._output.values():
+            yield node

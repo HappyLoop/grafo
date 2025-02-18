@@ -69,6 +69,7 @@ class Node:
             tuple[Callable[..., Any], Optional[dict[str, Any]]]
         ] = None,
     ):
+        self.uuid: str = uuid or str(uuid4())
         if not timeout:
             logger.warning(
                 "Node %s has no timeout, which can cause trees to run indefinitely. Consider setting a timeout.",
@@ -77,7 +78,6 @@ class Node:
 
         self.coroutine: Callable = coroutine
         self.kwargs: dict[str, Any] = kwargs if kwargs is not None else {}
-        self.uuid: str = uuid or str(uuid4())
         self.metadata: dict = metadata or {}
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect

@@ -37,7 +37,7 @@ async def mockup_coroutine(node: Node):
     Example coroutine function that simulates a task that takes 1 second to complete.
     """
     await asyncio.sleep(1)
-    return f"{(node.metadata or {}).get('name')} result"
+    return f"{node.metadata.get('name')} result"
 
 
 async def mockup_picker(node: Node):
@@ -45,7 +45,7 @@ async def mockup_picker(node: Node):
     Example picker function that selects the first and third children of the root node.
     """
     logger.debug(
-        f"  -> picked: {(node.children[0].metadata or {}).get('name')}, {(node.children[2].metadata or {}).get('name')}"
+        f"  -> picked: {node.children[0].metadata.get('name')}, {node.children[2].metadata.get('name')}"
     )
     node.disconnect(node.children[1])
 

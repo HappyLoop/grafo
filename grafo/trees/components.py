@@ -86,9 +86,9 @@ class Node:
 
         self.children: list["Node"] = []
         self.output: Any = None
-        self.event: asyncio.Event = asyncio.Event()
 
         # * Inner flags
+        self._event: asyncio.Event = asyncio.Event()
         self._is_running: bool = False
         self._parent_events: list[asyncio.Event] = []
         self._timeout: Optional[float] = timeout
@@ -125,7 +125,7 @@ class Node:
         Connects a child to this node.
         """
         self.children.append(child)
-        child._add_event(self.event)
+        child._add_event(self._event)
         if self.on_connect:
             callback, fixed_kwargs = self.on_connect
             callback(self, **(fixed_kwargs or {}))
@@ -135,7 +135,7 @@ class Node:
         Disconnects a child from this node.
         """
         self.children.remove(child)
-        child._remove_event(self.event)
+        child._remove_event(self._event)
         if self.on_disconnect:
             callback, fixed_kwargs = self.on_disconnect
             callback(self, **(fixed_kwargs or {}))
@@ -157,7 +157,7 @@ class Node:
         try:
             self._is_running = True
             self.output = await self.coroutine(self, **self.kwargs)
-            self.event.set()
+            self._event.set()
         finally:
             self._is_running = False
             if self.on_after_run:

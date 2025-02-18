@@ -1,11 +1,10 @@
 import asyncio
 import asyncio.log
-from typing import Any, AsyncGenerator, Optional, Union
+from typing import Any, AsyncGenerator, Optional
 from uuid import uuid4
 from grafo._internal import logger
 
-
-from .components import Node, PickerNode, UnionNode
+from .components import Node
 
 
 class AsyncTreeExecutor:
@@ -29,14 +28,12 @@ class AsyncTreeExecutor:
 
     def __init__(
         self,
-        name: Optional[str] = None,
+        uuid: Optional[str] = None,
         root: Optional[Node] = None,
         num_workers: int = 1,
         min_workers: int = 1,
         max_workers: int = 10,
         use_dynamic_workers: bool = True,
-        cutoff_branch_on_error: bool = False,
-        quit_tree_on_error: bool = False,
     ):
         if num_workers < min_workers:
             raise ValueError(
@@ -47,8 +44,7 @@ class AsyncTreeExecutor:
                 "'max_workers' must be greater than or equal to 'num_workers'."
             )
 
-        self._name = name
-
+        self._uuid = uuid
         self._root = root
         self._queue = asyncio.Queue()
         self._num_workers = num_workers
@@ -56,19 +52,16 @@ class AsyncTreeExecutor:
         self._max_workers = max_workers
         self._use_dynamic_workers = use_dynamic_workers
         self._workers = []
-        self._output = dict()
+        self._output = []
 
-        self._cutoff_branch_on_error = cutoff_branch_on_error
-        self._quit_tree_on_error = quit_tree_on_error
         self._visited_nodes = set()
         self._enqueued_nodes = set()
 
         self._graceful_stop_flag = False
-        self._graceful_stop_nodes = set()
 
     @property
     def name(self):
-        return self._name
+        return self._uuid
 
     def __or__(self, tree_dict: dict[Node, Any]):
         """
@@ -118,32 +111,14 @@ class AsyncTreeExecutor:
         def connect_children(
             parent_node: Node, children_iterable: dict[Node, Any] | list[Node]
         ):
-            self.__validate_element(parent_node)
-
             if isinstance(children_iterable, dict):
                 for child_node, descendants_iterable in children_iterable.items():
-                    if isinstance(parent_node, PickerNode) and isinstance(
-                        child_node, UnionNode
-                    ):
-                        raise ValueError(
-                            "UnionNodes cannot be children of PickerNodes."
-                        )
-
-                    self.__validate_element(child_node)
                     parent_node.connect(child_node)
 
                     connect_children(child_node, descendants_iterable)
 
             elif isinstance(children_iterable, list):
                 for child_node in children_iterable:
-                    if isinstance(parent_node, PickerNode) and isinstance(
-                        child_node, UnionNode
-                    ):
-                        raise ValueError(
-                            "UnionNodes cannot be children of PickerNodes."
-                        )
-
-                    self.__validate_element(child_node)
                     parent_node.connect(child_node)
 
         for root_node, children_iterable in tree_dict.items():
@@ -154,14 +129,6 @@ class AsyncTreeExecutor:
 
             elif isinstance(children_iterable, list):
                 for child_node in children_iterable:
-                    if isinstance(self, PickerNode) and isinstance(
-                        child_node, UnionNode
-                    ):
-                        raise ValueError(
-                            "UnionNodes cannot be children of PickerNodes."
-                        )
-
-                    self.__validate_element(child_node)
                     root_node.connect(child_node)
 
         return self
@@ -170,92 +137,58 @@ class AsyncTreeExecutor:
         """
         A worker that executes the work contained in a Node.
         """
-        result = None
         while True:
             node: Node = await self._queue.get()
 
-            if node is None:
+            if node is None or self._graceful_stop_flag:
                 self._queue.task_done()
                 break
+            if node.uuid in self._visited_nodes:
+                logger.warning(f"Skipping {node} because it has already been visited.")
+                continue
 
-            # Run the node
             try:
-                if node.uuid not in self._visited_nodes:
-                    result = await node.run()
-            except Exception as e:
-                if self._quit_tree_on_error:
-                    self._graceful_stop_flag = True
-                    self._graceful_stop_nodes.add(node)
-                    self._queue.task_done()
-                    logger.error(f"Quit at {node}. Error: {e}")
-                    break
+                # Run the node
+                logger.debug(f"Running {node}")
+                await node.run()
 
-                elif self._cutoff_branch_on_error or isinstance(
-                    e, asyncio.TimeoutError
+                # Enqueue children and adjust workers
+                for child in node.children:
+                    if child in self._enqueued_nodes:
+                        continue
+                    self._queue.put_nowait(child)
+                    self._enqueued_nodes.add(child)
+                    if (
+                        self._use_dynamic_workers
+                        and self._queue.qsize() > len(self._workers)
+                        and len(self._workers) < self._max_workers
+                    ):
+                        new_worker = asyncio.create_task(self.__worker())
+                        self._workers.append(new_worker)
+                        logger.debug(
+                            f"Added worker. Current workers: {len(self._workers)}"
+                        )
+
+                # Remove workers if needed
+                if (
+                    self._use_dynamic_workers
+                    and self._queue.qsize() < len(self._workers) - 1
+                    and len(self._workers) > self._min_workers
                 ):
-                    self._queue.task_done()
-                    logger.error(f"Cutoff at {node}. Error: {e}")
-                    break
-                else:
-                    logger.error(f"Error on {node}: {e}")
+                    self._queue.put_nowait(None)
+                    self._workers.pop()
+                    logger.debug(
+                        f"Removed worker. Current workers: {len(self._workers)}"
+                    )
+
+                self._output.append(node)
+            except Exception as e:
+                self._graceful_stop_flag = True
+                logger.error(f"Error on {node}: {e}")
+                break
             finally:
+                self._queue.task_done()
                 self._visited_nodes.add(node.uuid)
-
-            self._output[str(node.uuid)] = node
-
-            # Update children
-            if isinstance(node, PickerNode):
-                children = result or []
-            else:
-                children = node.children or []
-
-            for child in children or []:
-                args = []
-                kwargs = {}
-                if isinstance(result, list):
-                    for res in result:
-                        if isinstance(res, dict):
-                            kwargs.update(res)
-                        else:
-                            args.append(res)
-
-                elif isinstance(result, dict):
-                    kwargs.update(result)
-                else:
-                    args.append(result)
-
-                if node._forward_output:
-                    child.update(args=args, kwargs=kwargs)
-
-            # Enqueue children and adjust workers
-            if not self._graceful_stop_flag:
-                async with asyncio.Lock():
-                    for child_node in children:
-                        if child_node not in self._enqueued_nodes:
-                            self._queue.put_nowait(child_node)
-                            self._enqueued_nodes.add(child_node)
-                            # Adjust workers if needed
-                            if (
-                                self._use_dynamic_workers
-                                and self._queue.qsize() > len(self._workers)
-                                and len(self._workers) < self._max_workers
-                            ):
-                                new_worker = asyncio.create_task(self.__worker())
-                                self._workers.append(new_worker)
-                                logger.debug(
-                                    f"Added worker. Current workers: {len(self._workers)}"
-                                )
-            # Remove workers if needed
-            if (
-                self._use_dynamic_workers
-                and self._queue.qsize() < len(self._workers) - 1
-                and len(self._workers) > self._min_workers
-            ):
-                self._queue.put_nowait(None)
-                self._workers.pop()
-                logger.debug(f"Removed worker. Current workers: {len(self._workers)}")
-
-            self._queue.task_done()
 
     async def __stop_all_workers(self):
         """
@@ -264,14 +197,7 @@ class AsyncTreeExecutor:
         for _ in range(self._num_workers):
             self._queue.put_nowait(None)
 
-    def __validate_element(self, obj: Any):
-        """
-        Check if an object is an instance of Node.
-        """
-        if not isinstance(obj, Node):
-            raise ValueError(f"Object is not a Node instance. Object: {obj}")
-
-    async def run(self) -> list[Union[Node, UnionNode, PickerNode]]:
+    async def run(self) -> list[Node]:
         """
         Runs the tree with the specified number of workers.
         """
@@ -283,25 +209,20 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        logger.debug(f"Running tree{' {}'.format(self.name) if self.name else ''}...")
+        logger.debug(f"Running {' {}'.format(self.name) if self.name else ''}...")
 
         await self._queue.join()
         await self.__stop_all_workers()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
         logger.debug("Tree execution complete.")
-        if self._graceful_stop_flag:
-            logger.debug(
-                f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
-            )
-
-        return list(self._output.values())
+        return self._output
 
     async def yielding(
         self,
         stop_events: list[asyncio.Event],
         latency: float = 0.05,
-    ) -> AsyncGenerator[Union[Node, UnionNode, PickerNode], None]:
+    ) -> AsyncGenerator[Node, None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """
@@ -318,11 +239,12 @@ class AsyncTreeExecutor:
         while not all(stop_event.is_set() for stop_event in stop_events) and any(
             not worker.done() for worker in self._workers
         ):
-            for node_uuid, node in list(self._output.items()):
+            if self._graceful_stop_flag:
+                break
+
+            while self._output:
+                node = self._output.pop(0)
                 yield node
-                del self._output[
-                    node_uuid
-                ]  # ? REASON: Remove yielded result to avoid duplication
 
             await asyncio.sleep(
                 latency
@@ -333,11 +255,6 @@ class AsyncTreeExecutor:
         await asyncio.gather(*self._workers, return_exceptions=True)
 
         logger.debug("Tree execution complete.")
-        if self._graceful_stop_flag:
-            logger.debug(
-                f"Graceful stop due to errors in nodes: {self._graceful_stop_nodes}"
-            )
-
-        # ? REASON: Yield any remaining results
-        for node in self._output.values():
-            yield node
+        # ? REASON: Yield any remaining results safely
+        while self._output:
+            yield self._output.pop(0)

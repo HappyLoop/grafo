@@ -179,7 +179,7 @@ class AsyncTreeExecutor:
                 self._output.append(node)
             except Exception as e:
                 self._stop.set()
-                logger.error(f"Error on {node}: {e}")
+                logger.error(f"Error on {node}: {e}", exc_info=True)
                 break
             finally:
                 self._queue.task_done()

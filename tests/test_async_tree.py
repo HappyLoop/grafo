@@ -220,12 +220,9 @@ async def test_yielding():
     tree = executor | nodes
     results = []
 
-    stop_event = asyncio.Event()
     async for node in tree.yielding():
         results.append((node.uuid, node))
         logger.debug(f"Yielded: {node}")
-        if node.uuid == grandchild_node2.uuid:
-            stop_event.set()
 
     # Assert that all nodes have been processed and yielded
     nodes_uuids = [

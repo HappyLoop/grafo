@@ -230,17 +230,14 @@ class AsyncTreeExecutor:
 
         logger.debug(f"Running {'{}'.format(self._uuid) if self._uuid else ''}...")
 
-        while any(not worker.done() for worker in self._workers):
-            if self._stop.is_set():
+        while not self._stop.is_set():
+            if self._queue.empty():
                 break
-
             while self._output:
                 node = self._output.pop(0)
                 yield node
 
-            await asyncio.sleep(
-                latency
-            )  # ? REASON: Small delay to prevent busy-waiting
+            await asyncio.sleep(latency)  # Small delay to prevent busy-waiting
 
         await self._queue.join()
         await self.stop_tree()

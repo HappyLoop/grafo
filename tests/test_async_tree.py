@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from typing import Any, Callable, Optional
-from uuid import uuid4
 
 import pytest
 
@@ -22,10 +21,8 @@ def create_node(
     """
     Create a node with the given name, coroutine, and picker function.
     """
-    metadata = {"name": name, "description": f"{name.capitalize()} Node"}
     return Node(
-        uuid=str(uuid4()),
-        metadata=metadata,
+        uuid=name,
         coroutine=coroutine,
         timeout=timeout,
         on_after_run=(on_after_run, on_after_run_kwargs) if on_after_run else None,
@@ -109,7 +106,9 @@ async def test_picker():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(uuid="Picker Tree")
+    executor = AsyncTreeExecutor(
+        uuid="Picker Tree", use_dynamic_workers=False, num_workers=10
+    )
     tree = executor | nodes
     result = await tree.run()
 
@@ -186,7 +185,9 @@ async def test_error():
     }
 
     # Forward the results of each node to its children as arguments
-    executor = AsyncTreeExecutor(uuid="Error Tree")
+    executor = AsyncTreeExecutor(
+        uuid="Error Tree", use_dynamic_workers=False, num_workers=10
+    )
     tree = executor | nodes
     result = await tree.run()
 
@@ -213,12 +214,14 @@ async def test_yielding():
             child_node1: [grandchild_node1, grandchild_node2],
         }
     }
-    executor = AsyncTreeExecutor(uuid="Yielding Tree")
+    executor = AsyncTreeExecutor(
+        uuid="Yielding Tree", use_dynamic_workers=False, num_workers=10
+    )
     tree = executor | nodes
     results = []
 
     stop_event = asyncio.Event()
-    async for node in tree.yielding([stop_event]):
+    async for node in tree.yielding():
         results.append((node.uuid, node))
         logger.debug(f"Yielded: {node}")
         if node.uuid == grandchild_node2.uuid:
@@ -249,10 +252,9 @@ async def test_yield_with_timeout():
         logger.debug(f"{name} executed")
         return f"{name} result"
 
-    def stop_yielding(stop_event: asyncio.Event):
-        stop_event.set()
-
-    stop_event = asyncio.Event()
+    executor = AsyncTreeExecutor(
+        uuid="Yielding Tree with Timeout", use_dynamic_workers=False, num_workers=10
+    )
 
     root_node = create_node("root", mockup_coroutine)
     child1_node = create_node("child1", long_running_coroutine)
@@ -261,8 +263,6 @@ async def test_yield_with_timeout():
         "union",
         long_running_coroutine,
         timeout=1,
-        on_after_run=stop_yielding,
-        on_after_run_kwargs={"stop_event": stop_event},
     )
 
     # Build the tree using a JSON-like structure
@@ -273,15 +273,12 @@ async def test_yield_with_timeout():
         }
     }
 
-    executor = AsyncTreeExecutor(uuid="Yielding Tree with Timeout")
     tree = executor | nodes
     results = []
 
-    async for node in tree.yielding([stop_event]):
+    async for node in tree.yielding():
         results.append((node.uuid, node))
         logger.debug(f"Yielded: {node}")
-        if node.uuid == child1_node.uuid:
-            stop_event.set()
 
     expected_node_ids = [
         root_node.uuid,

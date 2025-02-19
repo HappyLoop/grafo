@@ -162,4 +162,4 @@ class Node:
             self._is_running = False
             if self.on_after_run:
                 callback, fixed_kwargs = self.on_after_run
-                callback(self, **(fixed_kwargs or {}))
+                callback(self, self.output, **(fixed_kwargs or {}))

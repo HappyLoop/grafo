@@ -1,8 +1,9 @@
 ## What ##
 A simple library for building runnable async trees. Trees are a web of interconnected Nodes, which contain code to be run. The number of workers is automatically managed (optional).
 
-Use:
+## Use
 
+**Building a tree with the `|` operator**
 ```
 # Declare your nodes
 root_node = Node(...)
@@ -22,6 +23,25 @@ nodes = {
 executor = AsyncTreeExecutor(logger=logger)
 tree = executor | nodes
 result = await tree.run()
+```
+
+**Connecting nodes manually**
+```
+root_node = Node(...)
+child1 = Node(...)
+
+await root_node.connect(child1)
+```
+
+
+**Evaluating coroutine kwargs during runtime**
+```
+node = Node(
+    coroutine=my_coroutine
+    kwargs=dict(
+        my_arg=lambda: my_arg
+    )
+)
 ```
 
 Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)

@@ -1,4 +1,7 @@
-from typing import Any, Callable, Optional, Self
+from collections import namedtuple
+import inspect
+import time
+from typing import Any, Callable, Generic, Optional, Self, TypeVar
 
 import asyncio
 from uuid import uuid4
@@ -27,7 +30,11 @@ def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-class Node:
+Metadata = namedtuple("Metadata", ["runtime"])
+T = TypeVar("T")
+
+
+class Node(Generic[T]):
     """
     A Node is a unit of work that can be executed concurrently. It contains a coroutine function that is executed by a worker.
 
@@ -54,7 +61,7 @@ class Node:
         coroutine: Callable,
         kwargs: Optional[dict[str, Any]] = None,
         uuid: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        state: Optional[dict] = None,
         timeout: Optional[float] = 60.0,
         on_connect: Optional[
             tuple[Callable[..., Any], Optional[dict[str, Any]]]
@@ -68,6 +75,7 @@ class Node:
         on_after_run: Optional[
             tuple[Callable[..., Any], Optional[dict[str, Any]]]
         ] = None,
+        shared_lock: Optional[asyncio.Lock] = None,
     ):
         self.uuid: str = uuid or str(uuid4())
         if not timeout:
@@ -78,14 +86,19 @@ class Node:
 
         self.coroutine: Callable = coroutine
         self.kwargs: dict[str, Any] = kwargs if kwargs is not None else {}
-        self.metadata: dict = metadata or {}
+        self.state: dict = state or {}
+        self.metadata: Metadata = Metadata(
+            runtime=0,
+        )
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
         self.on_before_run = on_before_run
         self.on_after_run = on_after_run
 
+        self.shared_lock = shared_lock
+
         self.children: list["Node"] = []
-        self.output: Any = None
+        self.output: Optional[T] = None
 
         # * Inner flags
         self._event: asyncio.Event = asyncio.Event()
@@ -120,25 +133,39 @@ class Node:
         """
         self._parent_events.remove(event)
 
-    def connect(self, child: Self):
+    def _eval_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """
+        Evaluates any lambda functions in kwargs, leaving other objects unchanged.
+        Returns a new dict with evaluated values.
+        """
+        lambda_type = type(lambda: None)
+        return {k: v() if isinstance(v, lambda_type) else v for k, v in kwargs.items()}
+
+    async def connect(self, child: Self):
         """
         Connects a child to this node.
         """
         self.children.append(child)
         child._add_event(self._event)
         if self.on_connect:
+            if not inspect.iscoroutinefunction(self.on_connect[0]):
+                raise ValueError("on_connect must be a coroutine function")
             callback, fixed_kwargs = self.on_connect
-            callback(self, **(fixed_kwargs or {}))
+            runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
+            await callback(**runtime_kwargs)
 
-    def disconnect(self, child: Self):
+    async def disconnect(self, child: Self):
         """
         Disconnects a child from this node.
         """
         self.children.remove(child)
         child._remove_event(self._event)
         if self.on_disconnect:
+            if not inspect.iscoroutinefunction(self.on_disconnect[0]):
+                raise ValueError("on_disconnect must be a coroutine function")
             callback, fixed_kwargs = self.on_disconnect
-            callback(self, **(fixed_kwargs or {}))
+            runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
+            await callback(**runtime_kwargs)
 
     @safe_execution
     async def run(self) -> Any:
@@ -150,16 +177,31 @@ class Node:
             timeout=self._timeout,
         )
 
-        if self.on_before_run:
-            callback, fixed_kwargs = self.on_before_run
-            callback(self, **(fixed_kwargs or {}))
-
         try:
+            start_time = time.time()
             self._is_running = True
-            self.output = await self.coroutine(self, **self.kwargs)
+
+            if self.on_before_run:
+                if not inspect.iscoroutinefunction(self.on_before_run[0]):
+                    raise ValueError("on_before_run must be a coroutine function")
+                callback, fixed_kwargs = self.on_before_run
+                runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
+                await callback(**runtime_kwargs)
+
+            runtime_kwargs = self._eval_kwargs(self.kwargs)
+            self.output = await self.coroutine(self, **runtime_kwargs)
             self._event.set()
+
+            if self.on_after_run:
+                if not inspect.iscoroutinefunction(self.on_after_run[0]):
+                    raise ValueError("on_after_run must be a coroutine function")
+                callback, fixed_kwargs = self.on_after_run
+                runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
+                await callback(**runtime_kwargs)
         finally:
             self._is_running = False
-            if self.on_after_run:
-                callback, fixed_kwargs = self.on_after_run
-                callback(self, self.output, **(fixed_kwargs or {}))
+            end_time = time.time()
+            self.metadata = Metadata(runtime=end_time - start_time)
+            logger.debug(
+                f"{self} coroutine completed in {self.metadata.runtime} seconds"
+            )

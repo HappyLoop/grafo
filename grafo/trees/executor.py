@@ -99,37 +99,45 @@ class AsyncTreeExecutor:
             tree_dict = {
                 Node(
                     uuid=str(uuid4()),
-                    metadata={
+                    state={
                         "__mockup__": True,
                     },
                     coroutine=mockup_coroutine,
                 ): tree_dict
             }
 
-        def connect_children(
+        # Store the tree structure for later async processing
+        root_node, children_iterable = next(iter(tree_dict.items()))
+        self._root = root_node
+        self._pending_connections = (root_node, children_iterable)
+
+        return self
+
+    async def _build_tree(self):
+        """Helper method to build the tree structure asynchronously"""
+        if not hasattr(self, "_pending_connections"):
+            return
+
+        root_node, children_iterable = self._pending_connections
+
+        async def connect_children(
             parent_node: Node, children_iterable: dict[Node, Any] | list[Node]
         ):
             if isinstance(children_iterable, dict):
                 for child_node, descendants_iterable in children_iterable.items():
-                    parent_node.connect(child_node)
-
-                    connect_children(child_node, descendants_iterable)
-
+                    await parent_node.connect(child_node)
+                    await connect_children(child_node, descendants_iterable)
             elif isinstance(children_iterable, list):
                 for child_node in children_iterable:
-                    parent_node.connect(child_node)
+                    await parent_node.connect(child_node)
 
-        for root_node, children_iterable in tree_dict.items():
-            self._root = root_node
+        if isinstance(children_iterable, dict):
+            await connect_children(root_node, children_iterable)
+        elif isinstance(children_iterable, list):
+            for child_node in children_iterable:
+                await root_node.connect(child_node)
 
-            if isinstance(children_iterable, dict):
-                connect_children(root_node, children_iterable)
-
-            elif isinstance(children_iterable, list):
-                for child_node in children_iterable:
-                    root_node.connect(child_node)
-
-        return self
+        delattr(self, "_pending_connections")
 
     async def __worker(self):
         """
@@ -178,8 +186,8 @@ class AsyncTreeExecutor:
 
                 self._output.append(node)
             except Exception as e:
-                self._stop.set()
                 logger.error(f"Error on {node}: {e}", exc_info=True)
+                self._stop.set()
                 break
             finally:
                 self._queue.task_done()
@@ -196,6 +204,7 @@ class AsyncTreeExecutor:
         """
         Runs the tree with the specified number of workers.
         """
+        await self._build_tree()  # Build the tree before running
         self._queue.put_nowait(self._root)
         self._workers = [
             asyncio.create_task(self.__worker()) for _ in range(self._num_workers)
@@ -220,6 +229,7 @@ class AsyncTreeExecutor:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """
+        await self._build_tree()
         self._queue.put_nowait(self._root)
         self._workers = [
             asyncio.create_task(self.__worker()) for _ in range(self._num_workers)

@@ -34,17 +34,15 @@ async def mockup_coroutine(node: Node):
     Example coroutine function that simulates a task that takes 1 second to complete.
     """
     await asyncio.sleep(1)
-    return f"{node.metadata.get('name')} result"
+    return f"{node.uuid} result"
 
 
 async def mockup_picker(node: Node):
     """
     Example picker function that selects the first and third children of the root node.
     """
-    logger.debug(
-        f"  -> picked: {node.children[0].metadata.get('name')}, {node.children[2].metadata.get('name')}"
-    )
-    node.disconnect(node.children[1])
+    logger.debug(f" -> picked: {node.children[0].uuid}, {node.children[2].uuid}")
+    await node.disconnect(node.children[1])
 
 
 async def mockup_bad_coroutine(_):
@@ -66,9 +64,9 @@ async def test_manual_tree():
     grandchild_node2 = create_node("grandchild2", mockup_coroutine)
 
     # Manually connecting nodes
-    root_node.connect(child_node1)
-    child_node1.connect(grandchild_node1)
-    child_node1.connect(grandchild_node2)
+    await root_node.connect(child_node1)
+    await child_node1.connect(grandchild_node1)
+    await child_node1.connect(grandchild_node2)
 
     executor = AsyncTreeExecutor(uuid="Manual Tree", root=root_node, num_workers=3)
     result = await executor.run()

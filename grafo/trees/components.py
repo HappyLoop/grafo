@@ -1,7 +1,7 @@
 from collections import namedtuple
 import inspect
 import time
-from typing import Any, Callable, Generic, Optional, Self, TypeVar
+from typing import Any, Callable, Generic, Optional, TypeVar
 
 import asyncio
 from uuid import uuid4
@@ -141,7 +141,7 @@ class Node(Generic[T]):
         lambda_type = type(lambda: None)
         return {k: v() if isinstance(v, lambda_type) else v for k, v in kwargs.items()}
 
-    async def connect(self, child: Self):
+    async def connect(self, child: "Node[T]"):
         """
         Connects a child to this node.
         """
@@ -154,7 +154,7 @@ class Node(Generic[T]):
             runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
             await callback(**runtime_kwargs)
 
-    async def disconnect(self, child: Self):
+    async def disconnect(self, child: "Node[T]"):
         """
         Disconnects a child from this node.
         """
@@ -189,7 +189,7 @@ class Node(Generic[T]):
                 await callback(**runtime_kwargs)
 
             runtime_kwargs = self._eval_kwargs(self.kwargs)
-            self.output = await self.coroutine(self, **runtime_kwargs)
+            self.output = await self.coroutine(**runtime_kwargs)
             self._event.set()
 
             if self.on_after_run:

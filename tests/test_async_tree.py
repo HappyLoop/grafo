@@ -21,12 +21,14 @@ def create_node(
     """
     Create a node with the given name, coroutine, and picker function.
     """
-    return Node(
+    node = Node(
         uuid=name,
         coroutine=coroutine,
         timeout=timeout,
         on_after_run=(on_after_run, on_after_run_kwargs) if on_after_run else None,
     )
+    node.kwargs = dict(node=node)
+    return node
 
 
 async def mockup_coroutine(node: Node):
@@ -68,7 +70,7 @@ async def test_manual_tree():
     await child_node1.connect(grandchild_node1)
     await child_node1.connect(grandchild_node2)
 
-    executor = AsyncTreeExecutor(uuid="Manual Tree", root=root_node, num_workers=3)
+    executor = AsyncTreeExecutor(uuid="Manual Tree", roots=[root_node], num_workers=3)
     result = await executor.run()
 
     # Assert result
@@ -241,11 +243,11 @@ async def test_yield_with_timeout():
     ensuring that nodes that exceed the timeout do not yield a result.
     """
 
-    async def long_running_coroutine(name):
+    async def long_running_coroutine(node: Node):
         # Simulate a long-running task
         await asyncio.sleep(3)
-        logger.debug(f"{name} executed")
-        return f"{name} result"
+        logger.debug(f"{node.uuid} executed")
+        return f"{node.uuid} result"
 
     executor = AsyncTreeExecutor(
         uuid="Yielding Tree with Timeout", use_dynamic_workers=False, num_workers=10
@@ -287,3 +289,98 @@ async def test_yield_with_timeout():
     logger.debug(
         "Test yield with timeout: timed out union node did not yield result, others yielded successfully."
     )
+
+
+@pytest.mark.asyncio
+async def test_simple_tree_structure():
+    """
+    Test a simple tree structure with a root node, two children, and four grandchildren.
+    """
+    # Create nodes
+    root_node = create_node("root", mockup_coroutine)
+    child1_node = create_node("child1", mockup_coroutine)
+    child2_node = create_node("child2", mockup_coroutine)
+    grandchild1_node = create_node("grandchild1", mockup_coroutine)
+    grandchild2_node = create_node("grandchild2", mockup_coroutine)
+    grandchild3_node = create_node("grandchild3", mockup_coroutine)
+    grandchild4_node = create_node("grandchild4", mockup_coroutine)
+
+    # Build the tree using a dictionary structure
+    nodes = {
+        root_node: {
+            child1_node: [grandchild1_node, grandchild2_node],
+            child2_node: [grandchild3_node, grandchild4_node],
+        }
+    }
+
+    # Create executor and build the tree
+    executor = AsyncTreeExecutor(uuid="Simple Tree", use_dynamic_workers=True)
+    tree = executor | nodes
+    result = await tree.run()
+
+    # Assert all nodes were processed
+    expected_nodes = [
+        root_node.uuid,
+        child1_node.uuid,
+        child2_node.uuid,
+        grandchild1_node.uuid,
+        grandchild2_node.uuid,
+        grandchild3_node.uuid,
+        grandchild4_node.uuid,
+    ]
+
+    # Check that all expected nodes are in the result
+    assert all(node.uuid in expected_nodes for node in result)
+    assert len(result) == len(expected_nodes)
+
+    logger.debug(f"Simple tree test completed with {len(result)} nodes processed")
+
+
+@pytest.mark.asyncio
+async def test_multiple_roots_structure():
+    """
+    Test a tree structure with multiple root nodes, each with their own children.
+    This tests the executor's ability to process trees without a single root node.
+    """
+    # Create nodes
+    root1_node = create_node("root1", mockup_coroutine)
+    root2_node = create_node("root2", mockup_coroutine)
+    child1_node = create_node("child1", mockup_coroutine)
+    child2_node = create_node("child2", mockup_coroutine)
+    grandchild1_node = create_node("grandchild1", mockup_coroutine)
+    grandchild2_node = create_node("grandchild2", mockup_coroutine)
+    grandchild3_node = create_node("grandchild3", mockup_coroutine)
+    grandchild4_node = create_node("grandchild4", mockup_coroutine)
+
+    # Build the tree using a dictionary structure with multiple roots
+    nodes = {
+        root1_node: {
+            child1_node: [grandchild1_node, grandchild2_node],
+        },
+        root2_node: {
+            child2_node: [grandchild3_node, grandchild4_node],
+        },
+    }
+
+    # Create executor and build the tree
+    executor = AsyncTreeExecutor(uuid="Multiple Roots Tree", use_dynamic_workers=True)
+    tree = executor | nodes
+    result = await tree.run()
+
+    # Assert all nodes were processed
+    expected_nodes = [
+        root1_node.uuid,
+        root2_node.uuid,
+        child1_node.uuid,
+        child2_node.uuid,
+        grandchild1_node.uuid,
+        grandchild2_node.uuid,
+        grandchild3_node.uuid,
+        grandchild4_node.uuid,
+    ]
+
+    # Check that all expected nodes are in the result
+    assert all(node.uuid in expected_nodes for node in result)
+    assert len(result) == len(expected_nodes)
+
+    logger.debug(f"Multiple roots test completed with {len(result)} nodes processed")

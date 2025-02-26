@@ -159,7 +159,7 @@ class AsyncTreeExecutor:
             try:
                 # Run the node
                 logger.debug(f"Running {node}")
-                await node.run()
+                await node.run_wrapper()
 
                 # Enqueue children
                 for child in node.children:

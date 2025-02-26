@@ -141,6 +141,19 @@ class Node(Generic[T]):
         lambda_type = type(lambda: None)
         return {k: v() if isinstance(v, lambda_type) else v for k, v in kwargs.items()}
 
+    async def _run_callback(
+        self,
+        prop: tuple[Callable[..., Any], Optional[dict[str, Any]]],
+    ):
+        """
+        Runs a callback with the given fixed kwargs.
+        """
+        callback, fixed_kwargs = prop
+        if not inspect.iscoroutinefunction(callback):
+            raise ValueError("callback must be a coroutine function")
+        runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
+        await callback(**runtime_kwargs)
+
     async def connect(self, child: "Node[T]"):
         """
         Connects a child to this node.
@@ -148,11 +161,7 @@ class Node(Generic[T]):
         self.children.append(child)
         child._add_event(self._event)
         if self.on_connect:
-            if not inspect.iscoroutinefunction(self.on_connect[0]):
-                raise ValueError("on_connect must be a coroutine function")
-            callback, fixed_kwargs = self.on_connect
-            runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
-            await callback(**runtime_kwargs)
+            await self._run_callback(self.on_connect)
 
     async def disconnect(self, child: "Node[T]"):
         """
@@ -161,14 +170,24 @@ class Node(Generic[T]):
         self.children.remove(child)
         child._remove_event(self._event)
         if self.on_disconnect:
-            if not inspect.iscoroutinefunction(self.on_disconnect[0]):
-                raise ValueError("on_disconnect must be a coroutine function")
-            callback, fixed_kwargs = self.on_disconnect
-            runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
-            await callback(**runtime_kwargs)
+            await self._run_callback(self.on_disconnect)
+
+    async def _on_before_run(self):
+        """
+        Runs the on_before_run callback.
+        """
+        if self.on_before_run:
+            await self._run_callback(self.on_before_run)
+
+    async def _on_after_run(self):
+        """
+        Runs the on_after_run callback.
+        """
+        if self.on_after_run:
+            await self._run_callback(self.on_after_run)
 
     @safe_execution
-    async def run(self) -> Any:
+    async def _run(self) -> Any:
         """
         Asynchronously runs the coroutine of in this node.
         """
@@ -181,23 +200,10 @@ class Node(Generic[T]):
             start_time = time.time()
             self._is_running = True
 
-            if self.on_before_run:
-                if not inspect.iscoroutinefunction(self.on_before_run[0]):
-                    raise ValueError("on_before_run must be a coroutine function")
-                callback, fixed_kwargs = self.on_before_run
-                runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
-                await callback(**runtime_kwargs)
-
             runtime_kwargs = self._eval_kwargs(self.kwargs)
             self.output = await self.coroutine(**runtime_kwargs)
             self._event.set()
 
-            if self.on_after_run:
-                if not inspect.iscoroutinefunction(self.on_after_run[0]):
-                    raise ValueError("on_after_run must be a coroutine function")
-                callback, fixed_kwargs = self.on_after_run
-                runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
-                await callback(**runtime_kwargs)
         finally:
             self._is_running = False
             end_time = time.time()
@@ -205,3 +211,11 @@ class Node(Generic[T]):
             logger.debug(
                 f"{self} coroutine completed in {self.metadata.runtime} seconds"
             )
+
+    async def run_wrapper(self):
+        """
+        Wraps the run method to run the on_before_run and on_after_run callbacks.
+        """
+        await self._on_before_run()
+        await self._run()
+        await self._on_after_run()

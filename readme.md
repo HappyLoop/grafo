@@ -4,7 +4,7 @@ A simple library for building runnable async trees. Trees are a web of interconn
 ## Use
 
 **Building a tree with the `|` operator**
-```
+```python
 # Declare your nodes
 root_node = Node(...)
 child1 = Node(...)
@@ -26,7 +26,7 @@ result = await tree.run()
 ```
 
 **Connecting nodes manually**
-```
+```python
 root_node = Node(...)
 child1 = Node(...)
 
@@ -35,13 +35,29 @@ await root_node.connect(child1)
 
 
 **Evaluating coroutine kwargs during runtime**
-```
+```python
 node = Node(
     coroutine=my_coroutine
     kwargs=dict(
         my_arg=lambda: my_arg
     )
 )
+```
+
+**Altering a tree during runtime**
+```python
+node_a = Node(...)
+node_b = Node(...)
+
+node_a.connect(node_b)
+
+def on_after_run(...):
+    node_a_copy = copy.deepcopy(node_a)
+    node_b.connect(node_a)
+
+node_b.on_after_run = on_after_run(...)
+
+# Reasoning: the deepcopy is necessary because, in order to enable two parents to share the same child, AsyncTreeExecutor prevents a node from running twice.
 ```
 
 Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)

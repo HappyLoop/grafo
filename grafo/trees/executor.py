@@ -164,7 +164,7 @@ class AsyncTreeExecutor:
                 # Enqueue children
                 for child in node.children:
                     if child in self._enqueued_nodes:
-                        continue
+                        self._enqueued_nodes.remove(child)
                     self._queue.put_nowait(child)
                     self._enqueued_nodes.add(child)
 

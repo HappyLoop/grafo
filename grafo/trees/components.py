@@ -134,7 +134,7 @@ class Node(Generic[T]):
         """
         self._parent_events.remove(event)
 
-    def _set_level(self, level: int):
+    def set_level(self, level: int):
         """
         Sets the level of this node.
         """
@@ -167,7 +167,7 @@ class Node(Generic[T]):
         """
         self.children.append(child)
         child._add_event(self._event)
-        child._set_level(self._level + 1)
+        child.set_level(self._level + 1)
         if self.on_connect:
             await self._run_callback(self.on_connect)
 

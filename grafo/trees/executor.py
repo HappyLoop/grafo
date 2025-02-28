@@ -1,4 +1,3 @@
-import shutil
 import asyncio
 import asyncio.log
 from typing import Any, AsyncGenerator, Optional
@@ -234,17 +233,19 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        logger.info("=" * (shutil.get_terminal_size((80, 20)).columns - 20))
+        # logger.info("=" * (shutil.get_terminal_size((80, 20)).columns - 20))
         logger.info(
-            f"{'   ' * base_level}Running {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root nodes..."
+            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90mRunning {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root node(s)...\033[0m"
         )
 
         await self._queue.join()
         await self.stop_tree()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
-        logger.info(f"{'   ' * base_level}Tree execution complete.")
-        logger.info("=" * (shutil.get_terminal_size((80, 20)).columns - 20))
+        logger.info(
+            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete.\033[0m"
+        )
+        # logger.info("=" * (shutil.get_terminal_size((80, 20)).columns - 20))
         return self._output
 
     async def yielding(
@@ -270,9 +271,9 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        logger.info("=" * shutil.get_terminal_size((80, 20)).columns)
+        # logger.info("=" * shutil.get_terminal_size((80, 20)).columns)
         logger.info(
-            f"{'   ' * base_level}Running {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root nodes..."
+            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90mRunning {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root node(s)...\033[0m"
         )
 
         while not self._stop.is_set():
@@ -288,8 +289,10 @@ class AsyncTreeExecutor:
         await self.stop_tree()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
-        logger.info(f"{'   ' * base_level}{self._uuid} complete.")
-        logger.info("=" * shutil.get_terminal_size((80, 20)).columns)
+        logger.info(
+            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete.\033[0m"
+        )
+        # logger.info("=" * shutil.get_terminal_size((80, 20)).columns)
         # ? REASON: Yield any remaining results safely
         while self._output:
             yield self._output.pop(0)

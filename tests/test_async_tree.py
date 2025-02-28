@@ -205,7 +205,7 @@ async def test_error():
     result = await tree.run()
 
     # Assert result
-    nodes_uuids = [root_node.uuid, child_node1.uuid]
+    nodes_uuids = [root_node.uuid, child_node1.uuid, grandchild_node1.uuid]
     assert all(node.uuid in nodes_uuids for node in result)
     assert child_node2.uuid not in nodes_uuids
     logger.debug(result)

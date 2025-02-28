@@ -30,7 +30,7 @@ def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-Metadata = namedtuple("Metadata", ["runtime"])
+Metadata = namedtuple("Metadata", ["runtime", "level"])
 T = TypeVar("T")
 
 
@@ -41,6 +41,7 @@ class Node(Generic[T]):
     :param coroutine: The coroutine function to execute.
     :param kwargs: Optional; the keyword arguments to pass to the coroutine.
     :param uuid: The unique identifier of the node.
+    :param state: Optional; a dict containing some state to be held by the node.
     :param metadata: Optional; a dict containing at least "name" and "description" for the node.
     :param timeout: Optional; the timeout for the node. If not provided, a warning will be logged.
 
@@ -87,9 +88,7 @@ class Node(Generic[T]):
         self.coroutine: Callable = coroutine
         self.kwargs: dict[str, Any] = kwargs if kwargs is not None else {}
         self.state: dict = state or {}
-        self.metadata: Metadata = Metadata(
-            runtime=0,
-        )
+        self.metadata: Metadata = Metadata(runtime=0, level=0)
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
         self.on_before_run = on_before_run
@@ -101,14 +100,13 @@ class Node(Generic[T]):
         self.output: Optional[T] = None
 
         # * Inner flags
-        self._level: int = 0
         self._event: asyncio.Event = asyncio.Event()
         self._is_running: bool = False
         self._parent_events: list[asyncio.Event] = []
         self._timeout: Optional[float] = timeout
 
     def __repr__(self) -> str:
-        return f"Node(uuid={self.uuid}, level={self._level})"
+        return f"Node(uuid={self.uuid}, level={self.metadata.level})"
 
     def __setattr__(self, name: str, value: Any) -> None:
         # ? REASON: check if _is_running exists to avoid interfering during __init__
@@ -138,7 +136,7 @@ class Node(Generic[T]):
         """
         Sets the level of this node.
         """
-        self._level = level
+        self.metadata = self.metadata._replace(level=level)
 
     def _eval_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """
@@ -167,7 +165,7 @@ class Node(Generic[T]):
         """
         self.children.append(child)
         child._add_event(self._event)
-        child.set_level(self._level + 1)
+        child.set_level(self.metadata.level + 1)
         if self.on_connect:
             await self._run_callback(self.on_connect)
 
@@ -202,7 +200,9 @@ class Node(Generic[T]):
         """
         try:
             start_time = time.time()
-            logger.info(f"{'    ' * self._level}\033[4m\033[93mRunning\033[0m {self}")
+            logger.info(
+                f"{'|   ' * self.metadata.level}\033[4m\033[93mRunning\033[0m {self}"
+            )
             self._is_running = True
 
             runtime_kwargs = self._eval_kwargs(self.kwargs)
@@ -212,16 +212,16 @@ class Node(Generic[T]):
         finally:
             self._is_running = False
             end_time = time.time()
-            self.metadata = Metadata(runtime=end_time - start_time)
+            self.metadata = self.metadata._replace(runtime=end_time - start_time)
             logger.info(
-                f"{'    ' * self._level}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
+                f"{'|   ' * (self.metadata.level - 1) + ('|---' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
             )
 
     async def run(self):
         """
         Wraps the run method to run the on_before_run and on_after_run callbacks.
         """
-        logger.debug(f"{'    ' * self._level}Awaiting {self} parents...")
+        logger.debug(f"{'|   ' * self.metadata.level}Awaiting {self} parents...")
         await asyncio.wait_for(
             asyncio.gather(*[e.wait() for e in self._parent_events]),
             timeout=self._timeout,

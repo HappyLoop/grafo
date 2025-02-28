@@ -7,7 +7,7 @@ import pytest
 from grafo.trees import AsyncTreeExecutor, Node
 from grafo._internal import logger
 
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 # Auxiliary functions
@@ -17,6 +17,7 @@ def create_node(
     timeout: Optional[float] = None,
     on_after_run: Optional[Callable[..., Any]] = None,
     on_after_run_kwargs: Optional[dict[str, Any]] = None,
+    kwargs: Optional[dict[str, Any]] = None,
 ) -> Node:
     """
     Create a node with the given name, coroutine, and picker function.
@@ -28,6 +29,7 @@ def create_node(
         on_after_run=(on_after_run, on_after_run_kwargs) if on_after_run else None,
     )
     node.kwargs = dict(node=node)
+    node.kwargs.update(kwargs or {})
     return node
 
 
@@ -47,11 +49,21 @@ async def mockup_picker(node: Node):
     await node.disconnect(node.children[1])
 
 
-async def mockup_bad_coroutine(_):
+async def mockup_bad_coroutine(node: Node):
     """
     Example coroutine function that simulates an error.
     """
-    raise ValueError("bad coroutine")
+    raise ValueError(f"{node.uuid} bad coroutine")
+
+
+async def cycle_coroutine(node: Node, child_node: Node):
+    """
+    Example coroutine function that simulates a cycle.
+    """
+    logger.debug(f"Cycle coroutine: {node.uuid} -> {child_node.uuid}")
+    await node.connect(child_node)
+    for grandchild in child_node.children:
+        await child_node.disconnect(grandchild)
 
 
 # Tests
@@ -162,6 +174,7 @@ async def test_union():
         grandchild_node2.uuid,
     ]
     assert all(node.uuid in nodes_uuids for node in result)
+    assert len(result) == len(nodes_uuids)
     logger.debug(result)
 
 
@@ -384,3 +397,25 @@ async def test_multiple_roots_structure():
     assert len(result) == len(expected_nodes)
 
     logger.debug(f"Multiple roots test completed with {len(result)} nodes processed")
+
+
+@pytest.mark.asyncio
+async def test_cycle():
+    """
+    Test a cycle in the tree structure with nodeA -> nodeB -> nodeA and then break the cycle.
+    """
+    # Create nodes
+    node_a = create_node("nodeA", mockup_coroutine)
+    node_b = create_node("nodeB", cycle_coroutine, kwargs={"child_node": node_a})
+
+    # Connect nodes to form a cycle
+    await node_a.connect(node_b)
+
+    # Create executor and run the tree
+    executor = AsyncTreeExecutor(uuid="Cycle Break Tree", roots=[node_a], num_workers=2)
+    result = await executor.run()
+
+    # Assert that the cycle was broken and nodes were processed
+    nodes_uuids = [node_a.uuid, node_b.uuid]
+    assert all(node.uuid in nodes_uuids for node in result)
+    logger.debug("Cycle break test completed with nodes processed successfully.")

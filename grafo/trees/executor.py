@@ -158,15 +158,13 @@ class AsyncTreeExecutor:
 
             try:
                 # Run the node
-                logger.debug(f"Running {node}")
-                await node.run_wrapper()
+                await node.run()
 
                 # Enqueue children
                 for child in node.children:
-                    if child in self._enqueued_nodes:
-                        self._enqueued_nodes.remove(child)
-                    self._queue.put_nowait(child)
-                    self._enqueued_nodes.add(child)
+                    if child not in self._enqueued_nodes:
+                        self._enqueued_nodes.add(child)
+                        self._queue.put_nowait(child)
 
                 # Adjust workers based on queue size and current worker count
                 if self._use_dynamic_workers:
@@ -196,8 +194,12 @@ class AsyncTreeExecutor:
                             )
 
                 self._output.append(node)
+                self._enqueued_nodes.remove(node)
             except Exception as e:
-                logger.error(f"Error on {node}: {e}", exc_info=True)
+                logger.error(
+                    f"{'   ' * node._level}\033[4;31mError\033[0m on {node}: {e}",
+                    exc_info=True,
+                )
                 self._stop.set()
                 break
             finally:
@@ -229,15 +231,15 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        logger.debug(
-            f"Running {' {}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root nodes..."
+        logger.info(
+            f"Running {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root nodes..."
         )
 
         await self._queue.join()
         await self.stop_tree()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
-        logger.debug("Tree execution complete.")
+        logger.info("Tree execution complete.")
         return self._output
 
     async def yielding(
@@ -261,7 +263,7 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        logger.debug(
+        logger.info(
             f"Running {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root nodes..."
         )
 
@@ -278,7 +280,7 @@ class AsyncTreeExecutor:
         await self.stop_tree()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
-        logger.debug(f"{self._uuid} complete.")
+        logger.info(f"{self._uuid} complete.")
         # ? REASON: Yield any remaining results safely
         while self._output:
             yield self._output.pop(0)

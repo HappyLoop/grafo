@@ -101,18 +101,19 @@ class Node(Generic[T]):
         self.output: Optional[T] = None
 
         # * Inner flags
+        self._level: int = 0
         self._event: asyncio.Event = asyncio.Event()
         self._is_running: bool = False
         self._parent_events: list[asyncio.Event] = []
         self._timeout: Optional[float] = timeout
 
     def __repr__(self) -> str:
-        return f"Node(uuid={self.uuid})"
+        return f"Node(uuid={self.uuid}, level={self._level})"
 
     def __setattr__(self, name: str, value: Any) -> None:
         # ? REASON: check if _is_running exists to avoid interfering during __init__
         if (
-            name not in ["_is_running", "output"]
+            name not in ["_level", "_is_running", "output"]
             and hasattr(self, "_is_running")
             and self._is_running
         ):
@@ -132,6 +133,12 @@ class Node(Generic[T]):
         Removes an event from this node so that it no longer waits for it to be set before running.
         """
         self._parent_events.remove(event)
+
+    def _set_level(self, level: int):
+        """
+        Sets the level of this node.
+        """
+        self._level = level
 
     def _eval_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """
@@ -160,6 +167,7 @@ class Node(Generic[T]):
         """
         self.children.append(child)
         child._add_event(self._event)
+        child._set_level(self._level + 1)
         if self.on_connect:
             await self._run_callback(self.on_connect)
 
@@ -169,6 +177,7 @@ class Node(Generic[T]):
         """
         self.children.remove(child)
         child._remove_event(self._event)
+        # ? NOTE: no level removal because nodes can have multiple parents
         if self.on_disconnect:
             await self._run_callback(self.on_disconnect)
 
@@ -191,13 +200,9 @@ class Node(Generic[T]):
         """
         Asynchronously runs the coroutine of in this node.
         """
-        await asyncio.wait_for(
-            asyncio.gather(*[e.wait() for e in self._parent_events]),
-            timeout=self._timeout,
-        )
-
         try:
             start_time = time.time()
+            logger.info(f"{'    ' * self._level}\033[4m\033[93mRunning\033[0m {self}")
             self._is_running = True
 
             runtime_kwargs = self._eval_kwargs(self.kwargs)
@@ -208,14 +213,19 @@ class Node(Generic[T]):
             self._is_running = False
             end_time = time.time()
             self.metadata = Metadata(runtime=end_time - start_time)
-            logger.debug(
-                f"{self} coroutine completed in {self.metadata.runtime} seconds"
+            logger.info(
+                f"{'    ' * self._level}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
             )
 
-    async def run_wrapper(self):
+    async def run(self):
         """
         Wraps the run method to run the on_before_run and on_after_run callbacks.
         """
+        logger.debug(f"{'    ' * self._level}Awaiting {self} parents...")
+        await asyncio.wait_for(
+            asyncio.gather(*[e.wait() for e in self._parent_events]),
+            timeout=self._timeout,
+        )
         await self._on_before_run()
         await self._run()
         await self._on_after_run()

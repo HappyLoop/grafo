@@ -159,7 +159,7 @@ class Node(Generic[T]):
         runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
         await callback(**runtime_kwargs)
 
-    async def connect(self, child: "Node[T]"):
+    async def connect(self, child: "Node"):
         """
         Connects a child to this node.
         """
@@ -169,7 +169,7 @@ class Node(Generic[T]):
         if self.on_connect:
             await self._run_callback(self.on_connect)
 
-    async def disconnect(self, child: "Node[T]"):
+    async def disconnect(self, child: "Node"):
         """
         Disconnects a child from this node.
         """
@@ -214,7 +214,7 @@ class Node(Generic[T]):
             end_time = time.time()
             self.metadata = self.metadata._replace(runtime=end_time - start_time)
             logger.info(
-                f"{'|   ' * (self.metadata.level - 1) + ('|---' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
+                f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
             )
 
     async def run(self):

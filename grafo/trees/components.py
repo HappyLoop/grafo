@@ -173,6 +173,11 @@ class Node(Generic[T]):
         """
         Disconnects a child from this node.
         """
+        if child not in self.children:
+            logger.warning(
+                f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[91m\033[4mWarning\033[0m {self} is trying to disconnect a child that is not in its children: {child}. No action taken."
+            )
+            return
         self.children.remove(child)
         child._remove_event(self._event)
         # ? NOTE: no level removal because nodes can have multiple parents

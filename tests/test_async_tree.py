@@ -4,8 +4,8 @@ from typing import Any, Callable, Optional
 
 import pytest
 
-from grafo.trees import AsyncTreeExecutor, Node
 from grafo._internal import logger
+from grafo.trees import AsyncTreeExecutor, Node
 
 logger.setLevel(logging.INFO)
 
@@ -45,7 +45,7 @@ async def mockup_picker(node: Node):
     """
     Example picker function that selects the first and third children of the root node.
     """
-    logger.debug(f" -> picked: {node.children[0].uuid}, {node.children[2].uuid}")
+    logger.info(f" -> picked: {node.children[0].uuid}, {node.children[2].uuid}")
     await node.disconnect(node.children[1])
 
 
@@ -60,7 +60,7 @@ async def cycle_coroutine(node: Node, child_node: Node):
     """
     Example coroutine function that simulates a cycle.
     """
-    logger.debug(f"Cycle coroutine: {node.uuid} -> {child_node.uuid}")
+    logger.info(f"Cycle coroutine: {node.uuid} -> {child_node.uuid}")
     await node.connect(child_node)
     for grandchild in child_node.children:
         await child_node.disconnect(grandchild)
@@ -93,7 +93,7 @@ async def test_manual_tree():
         grandchild_node2.uuid,
     ]
     assert all(node.uuid in nodes_uuids for node in result)
-    logger.debug(result)
+    logger.info(result)
 
 
 @pytest.mark.asyncio
@@ -133,7 +133,7 @@ async def test_picker():
     ]
     assert all(node.uuid in nodes_uuids for node in result)
     assert child_node2.uuid not in nodes_uuids
-    logger.debug(result)
+    logger.info(result)
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,7 @@ async def test_union():
     ]
     assert all(node.uuid in nodes_uuids for node in result)
     assert len(result) == len(nodes_uuids)
-    logger.debug(result)
+    logger.info(result)
 
 
 @pytest.mark.asyncio
@@ -208,7 +208,7 @@ async def test_error():
     nodes_uuids = [root_node.uuid, child_node1.uuid, grandchild_node1.uuid]
     assert all(node.uuid in nodes_uuids for node in result)
     assert child_node2.uuid not in nodes_uuids
-    logger.debug(result)
+    logger.info(result)
 
 
 @pytest.mark.asyncio
@@ -227,15 +227,13 @@ async def test_yielding():
             child_node1: [grandchild_node1, grandchild_node2],
         }
     }
-    executor = AsyncTreeExecutor(
-        uuid="Yielding Tree", use_dynamic_workers=False, num_workers=10
-    )
+    executor = AsyncTreeExecutor(uuid="Yielding Tree", use_dynamic_workers=True)
     tree = executor | nodes
     results = []
 
     async for node in tree.yielding():
         results.append((node.uuid, node))
-        logger.debug(f"Yielded: {node}")
+        logger.info(f"Yielded: {node}")
 
     # Assert that all nodes have been processed and yielded
     nodes_uuids = [
@@ -246,7 +244,7 @@ async def test_yielding():
     ]
     yielded_uuids = [uuid for uuid, _ in results]
     assert all(node_uuid in yielded_uuids for node_uuid in nodes_uuids)
-    logger.debug("All nodes yielded successfully.")
+    logger.info("All nodes yielded successfully.")
 
 
 @pytest.mark.asyncio
@@ -259,7 +257,7 @@ async def test_yield_with_timeout():
     async def long_running_coroutine(node: Node):
         # Simulate a long-running task
         await asyncio.sleep(3)
-        logger.debug(f"{node.uuid} executed")
+        logger.info(f"{node.uuid} executed")
         return f"{node.uuid} result"
 
     executor = AsyncTreeExecutor(
@@ -288,7 +286,7 @@ async def test_yield_with_timeout():
 
     async for node in tree.yielding():
         results.append((node.uuid, node))
-        logger.debug(f"Yielded: {node}")
+        logger.info(f"Yielded: {node}")
 
     expected_node_ids = [
         root_node.uuid,
@@ -299,7 +297,7 @@ async def test_yield_with_timeout():
     yielded_ids = [n_uuid for n_uuid, _ in results]
     assert all(node_uuid in yielded_ids for node_uuid in expected_node_ids)
     assert union_node.uuid not in yielded_ids
-    logger.debug(
+    logger.info(
         "Test yield with timeout: timed out union node did not yield result, others yielded successfully."
     )
 
@@ -346,7 +344,7 @@ async def test_simple_tree_structure():
     assert all(node.uuid in expected_nodes for node in result)
     assert len(result) == len(expected_nodes)
 
-    logger.debug(f"Simple tree test completed with {len(result)} nodes processed")
+    logger.info(f"Simple tree test completed with {len(result)} nodes processed")
 
 
 @pytest.mark.asyncio
@@ -396,7 +394,7 @@ async def test_multiple_roots_structure():
     assert all(node.uuid in expected_nodes for node in result)
     assert len(result) == len(expected_nodes)
 
-    logger.debug(f"Multiple roots test completed with {len(result)} nodes processed")
+    logger.info(f"Multiple roots test completed with {len(result)} nodes processed")
 
 
 @pytest.mark.asyncio
@@ -418,4 +416,4 @@ async def test_cycle():
     # Assert that the cycle was broken and nodes were processed
     nodes_uuids = [node_a.uuid, node_b.uuid]
     assert all(node.uuid in nodes_uuids for node in result)
-    logger.debug("Cycle break test completed with nodes processed successfully.")
+    logger.info("Cycle break test completed with nodes processed successfully.")

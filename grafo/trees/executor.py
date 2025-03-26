@@ -1,7 +1,9 @@
 import asyncio
 import asyncio.log
+import time
 from typing import Any, AsyncGenerator, Optional
 from uuid import uuid4
+
 from grafo._internal import logger
 
 from .components import Node
@@ -233,24 +235,24 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        # logger.info("=" * (shutil.get_terminal_size((80, 20)).columns - 20))
         logger.info(
             f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90mRunning {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root node(s)...\033[0m"
         )
+        start_time = time.time()
 
         await self._queue.join()
         await self.stop_tree()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
+        end_time = time.time()
         logger.info(
-            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete.\033[0m"
+            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete in {end_time - start_time:.2f} seconds.\033[0m"
         )
-        # logger.info("=" * (shutil.get_terminal_size((80, 20)).columns - 20))
         return self._output
 
     async def yielding(
         self,
-        latency: float = 0.05,
+        latency: float = 0.01,
     ) -> AsyncGenerator[Node, None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
@@ -271,17 +273,20 @@ class AsyncTreeExecutor:
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
 
-        # logger.info("=" * shutil.get_terminal_size((80, 20)).columns)
         logger.info(
             f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90mRunning {'{}'.format(self._uuid) if self._uuid else ''} with {len(self._roots)} root node(s)...\033[0m"
         )
+        start_time = time.time()
 
+        completed_nodes = []
         while not self._stop.is_set():
-            if self._queue.empty():
-                break
             while self._output:
                 node = self._output.pop(0)
+                completed_nodes.append(node)
                 yield node
+                break
+            if len(self._enqueued_nodes) == 0:
+                break
 
             await asyncio.sleep(latency)  # Small delay to prevent busy-waiting
 
@@ -289,10 +294,11 @@ class AsyncTreeExecutor:
         await self.stop_tree()
         await asyncio.gather(*self._workers, return_exceptions=True)
 
-        logger.info(
-            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete.\033[0m"
-        )
-        # logger.info("=" * shutil.get_terminal_size((80, 20)).columns)
         # ? REASON: Yield any remaining results safely
         while self._output:
             yield self._output.pop(0)
+
+        end_time = time.time()
+        logger.info(
+            f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete in {end_time - start_time:.2f} seconds.\033[0m"
+        )

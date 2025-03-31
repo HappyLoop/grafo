@@ -45,20 +45,7 @@ node = Node(
 ```
 
 **Altering a tree during runtime**
-```python
-node_a = Node(...)
-node_b = Node(...)
-
-node_a.connect(node_b)
-
-def on_after_run(...):
-    node_a_copy = copy.deepcopy(node_a)
-    node_b.connect(node_a)
-
-node_b.on_after_run = on_after_run(...)
-
-# Reasoning: the deepcopy is necessary because, in order to enable two parents to share the same child, AsyncTreeExecutor prevents a node from running twice.
-```
+updated example coming later
 
 Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)
 
@@ -67,9 +54,8 @@ Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)
 - Upon each Node's execution, it removes itself from the queue and enqueues its children up next
 
 ## Axioms ##
-1) A tree must include a designated root node, and there can be only one unique root.
-2) Children start running as soon as all their parent's are finished.
-3) There's no passing of state between nodes - you can handle that however you see fit
+1) Children start running as soon as all their parent's are finished.
+2) There's no passing of state between nodes - you can handle that however you see fit
 
 ## Important ##
 - Node properties are generally accessible, but are immutable during a node's runtime (do not confuse with the tree's runtime).

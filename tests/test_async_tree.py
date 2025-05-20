@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from typing import Any, Callable, Optional
 
 import pytest
@@ -417,3 +418,63 @@ async def test_cycle():
     nodes_uuids = [node_a.uuid, node_b.uuid]
     assert all(node.uuid in nodes_uuids for node in result)
     logger.info("Cycle break test completed with nodes processed successfully.")
+
+
+@pytest.mark.asyncio
+async def test_dynamic_cycle_connection():
+    """
+    Test dynamic cycle creation and breaking during runtime.
+    Node A outputs random floats, Node B creates a cycle with A, lets A run again,
+    then breaks the cycle.
+    """
+    total_a_runs = 0
+    node_a_first_output = None
+    node_a_second_output = None
+
+    async def random_float_coroutine(node: Node, target_node: Node):
+        """
+        Coroutine that outputs a random float between 0 and 1.
+        """
+        nonlocal total_a_runs, node_a_first_output, node_a_second_output
+        number = random.random()
+        if total_a_runs > 0:
+            await node.disconnect(target_node)
+            node_a_second_output = number
+        else:
+            node_a_first_output = number
+
+        print(f"{node.uuid} generated number: {number}")
+        total_a_runs += 1
+        return number
+
+    async def cycle_creator_coroutine(node: Node, target_node: Node):
+        """
+        Coroutine that creates a cycle with the target node, waits for it to run,
+        then breaks the cycle.
+        """
+        await node.connect(target_node)
+        return f"{node.uuid} cycle completed"
+
+    # Create nodes
+    node_a = create_node("nodeA", random_float_coroutine)
+    node_b = create_node("nodeB", cycle_creator_coroutine)
+    node_a.kwargs = dict(node=node_a, target_node=node_b)
+    node_b.kwargs = dict(node=node_b, target_node=node_a)
+
+    # Initial connection A -> B
+    await node_a.connect(node_b)
+
+    # Create executor and run the tree
+    executor = AsyncTreeExecutor(
+        uuid="Dynamic Cycle Tree", roots=[node_a], num_workers=2
+    )
+    result = await executor.run()
+
+    # Assert that both nodes were processed
+    nodes_uuids = [node_a.uuid, node_b.uuid]
+    assert all(node.uuid in nodes_uuids for node in result)
+
+    # Verify that node A's first output is not equal to its second output
+    assert node_a_first_output != node_a_second_output
+
+    print("Dynamic cycle test completed successfully")

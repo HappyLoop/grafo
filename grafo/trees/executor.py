@@ -55,7 +55,8 @@ class AsyncTreeExecutor:
         self._use_dynamic_workers = use_dynamic_workers
 
         self._workers = []
-        self._output = []
+        self._output_nodes = []
+        self._output_results = []
 
         self._queue = asyncio.Queue()
         self._enqueued_nodes = set()
@@ -74,6 +75,10 @@ class AsyncTreeExecutor:
     @property
     def name(self):
         return self._uuid
+
+    @property
+    def results(self):
+        return self._output_results
 
     def __or__(self, tree_dict: dict[Node, Any]):
         """
@@ -195,7 +200,8 @@ class AsyncTreeExecutor:
                                 f"Removed {workers_to_remove} workers. Current workers: {len(self._workers)}"
                             )
 
-                self._output.append(node)
+                self._output_nodes.append(node)
+                self._output_results.append({node.uuid: node.output})
                 self._enqueued_nodes.remove(node)
             except Exception as e:
                 logger.error(
@@ -248,7 +254,7 @@ class AsyncTreeExecutor:
         logger.info(
             f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete in {end_time - start_time:.2f} seconds.\033[0m"
         )
-        return self._output
+        return self._output_nodes
 
     async def yielding(
         self,
@@ -280,8 +286,8 @@ class AsyncTreeExecutor:
 
         completed_nodes = []
         while not self._stop.is_set():
-            while self._output:
-                node = self._output.pop(0)
+            while self._output_nodes:
+                node = self._output_nodes.pop(0)
                 completed_nodes.append(node)
                 yield node
                 break
@@ -295,8 +301,8 @@ class AsyncTreeExecutor:
         await asyncio.gather(*self._workers, return_exceptions=True)
 
         # ? REASON: Yield any remaining results safely
-        while self._output:
-            yield self._output.pop(0)
+        while self._output_nodes:
+            yield self._output_nodes.pop(0)
 
         end_time = time.time()
         logger.info(

@@ -1,9 +1,8 @@
-from collections import namedtuple
+import asyncio
 import inspect
 import time
+from collections import namedtuple
 from typing import Any, Callable, Generic, Optional, TypeVar
-
-import asyncio
 from uuid import uuid4
 
 from grafo._internal import logger
@@ -76,7 +75,7 @@ class Node(Generic[T]):
         on_after_run: Optional[
             tuple[Callable[..., Any], Optional[dict[str, Any]]]
         ] = None,
-        shared_lock: Optional[asyncio.Lock] = None,
+        _shared_lock: Optional[asyncio.Lock] = None,
     ):
         self.uuid: str = uuid or str(uuid4())
         if not timeout:
@@ -94,7 +93,7 @@ class Node(Generic[T]):
         self.on_before_run = on_before_run
         self.on_after_run = on_after_run
 
-        self.shared_lock = shared_lock
+        self.shared_lock = _shared_lock
 
         self.children: list["Node"] = []
         self.output: Optional[T] = None
@@ -183,6 +182,14 @@ class Node(Generic[T]):
         # ? NOTE: no level removal because nodes can have multiple parents
         if self.on_disconnect:
             await self._run_callback(self.on_disconnect)
+
+    async def redirect(self, target: "Node"):
+        """
+        Convenience method to disconnect all children and connect to a new target.
+        """
+        for child in self.children:
+            await self.disconnect(child)
+        await self.connect(target)
 
     async def _on_before_run(self):
         """

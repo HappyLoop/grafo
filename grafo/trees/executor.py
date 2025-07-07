@@ -57,6 +57,7 @@ class AsyncTreeExecutor:
         self._workers = []
         self._output_nodes = []
         self._output_results = []
+        self._errors = []
 
         self._queue = asyncio.Queue()
         self._enqueued_nodes = set()
@@ -204,11 +205,14 @@ class AsyncTreeExecutor:
                 self._output_results.append({node.uuid: node.output})
                 self._enqueued_nodes.remove(node)
             except Exception as e:
+                self._errors.append(e)
                 logger.error(
                     f"{'|   ' * (node.metadata.level - 1) + ('|---' if node.metadata.level > 0 else '')}\033[4;31mError\033[0m on {node}: {e}",
                     exc_info=True,
                 )
                 self._stop.set()
+                if not node._is_running:
+                    raise e
                 break
             finally:
                 self._queue.task_done()

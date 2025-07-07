@@ -220,7 +220,6 @@ class Node(Generic[T]):
             runtime_kwargs = self._eval_kwargs(self.kwargs)
             self.output = await self.coroutine(**runtime_kwargs)
             self._event.set()
-
         finally:
             self._is_running = False
             end_time = time.time()

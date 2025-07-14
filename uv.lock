@@ -1,0 +1,15 @@
+version = 1
+revision = 2
+requires-python = ">=3.6"
+resolution-markers = [
+    "python_full_version >= '3.9'",
+    "python_full_version == '3.8.*'",
+    "python_full_version == '3.7.*'",
+    "python_full_version >= '3.6.8' and python_full_version < '3.7'",
+    "python_full_version < '3.6.8'",
+]
+
+[[package]]
+name = "grafo"
+version = "0.2.16"
+source = { editable = "." }

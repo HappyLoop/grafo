@@ -233,6 +233,8 @@ async def test_yielding():
     results = []
 
     async for node in tree.yielding():
+        if not isinstance(node, Node):
+            continue
         results.append((node.uuid, node))
         logger.info(f"Yielded: {node}")
 
@@ -286,6 +288,8 @@ async def test_yield_with_timeout():
     results = []
 
     async for node in tree.yielding():
+        if not isinstance(node, Node):
+            continue
         results.append((node.uuid, node))
         logger.info(f"Yielded: {node}")
 
@@ -478,3 +482,95 @@ async def test_dynamic_cycle_connection():
     assert node_a_first_output != node_a_second_output
 
     print("Dynamic cycle test completed successfully")
+
+
+async def mockup_yielding_coroutine(node: Node):
+    """
+    Example async generator function that yields intermediate results.
+    """
+    for i in range(3):
+        await asyncio.sleep(0.5)  # Simulate some work
+        yield f"{node.uuid} progress {i}"
+
+    # Final result
+    await asyncio.sleep(0.5)
+    yield f"{node.uuid} completed"
+
+
+@pytest.mark.asyncio
+async def test_mixed_tree_with_yielding():
+    """
+    Test a tree with mixed node types: some regular coroutines and some async generators.
+    Uses manual .connect() to build the tree.
+    """
+    # Create nodes with mixed types
+    root_node = create_node("root", mockup_coroutine)  # Regular coroutine
+    child1_node = create_node("child1", mockup_yielding_coroutine)  # Async generator
+    child2_node = create_node("child2", mockup_coroutine)  # Regular coroutine
+    grandchild1_node = create_node(
+        "grandchild1", mockup_yielding_coroutine
+    )  # Async generator
+    grandchild2_node = create_node("grandchild2", mockup_coroutine)  # Regular coroutine
+
+    # Manually connect nodes to build the tree
+    await root_node.connect(child1_node)
+    await root_node.connect(child2_node)
+    await child1_node.connect(grandchild1_node)
+    await child2_node.connect(grandchild2_node)
+
+    # Create executor and run the tree
+    executor = AsyncTreeExecutor(uuid="Mixed Tree", roots=[root_node], num_workers=3)
+
+    # Test the yielding method to get both node completions and intermediate results
+    results = []
+    node_completions = []
+    intermediate_results = []
+
+    async for item in executor.yielding():
+        if isinstance(item, Node):
+            # This is a completed node
+            node_completions.append(item.uuid)
+            results.append(f"Completed: {item.uuid}")
+            logger.info(f"Completed node: {item.uuid}")
+        else:
+            # This is an intermediate result from a yielding node
+            node_uuid, result = item
+            intermediate_results.append((node_uuid, result))
+            results.append(f"Result: {node_uuid} -> {result}")
+            logger.info(f"Intermediate result: {node_uuid} -> {result}")
+
+    # Assert that all nodes were completed
+    expected_completed_nodes = [
+        root_node.uuid,
+        child1_node.uuid,
+        child2_node.uuid,
+        grandchild1_node.uuid,
+        grandchild2_node.uuid,
+    ]
+
+    assert all(node_uuid in node_completions for node_uuid in expected_completed_nodes)
+    assert len(node_completions) == len(expected_completed_nodes)
+
+    # Assert that we got intermediate results from yielding nodes
+    yielding_nodes = [child1_node.uuid, grandchild1_node.uuid]
+
+    # Each yielding node should have yielded multiple results
+    for yielding_node_uuid in yielding_nodes:
+        node_results = [
+            result
+            for uuid, result in intermediate_results
+            if uuid == yielding_node_uuid
+        ]
+        assert len(node_results) >= 3  # At least 3 yields per yielding node
+        assert any("progress" in result for result in node_results)
+        assert any("completed" in result for result in node_results)
+
+    # Verify the structure of results
+    assert len(results) > len(
+        expected_completed_nodes
+    )  # More results than nodes due to yielding
+
+    logger.info("Mixed tree test completed successfully!")
+    logger.info(f"Completed nodes: {node_completions}")
+    logger.info(f"Intermediate results count: {len(intermediate_results)}")
+    logger.info(f"Total results: {len(results)}")

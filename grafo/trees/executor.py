@@ -3,6 +3,7 @@ import asyncio.log
 import time
 from typing import Any, AsyncGenerator, Optional
 from uuid import uuid4
+import inspect
 
 from grafo._internal import logger
 
@@ -56,11 +57,11 @@ class AsyncTreeExecutor:
 
         self._workers = []
         self._output_nodes = []
-        self._output_results = []
+        self._output_values: list[tuple[str, list[Any]]] = []
         self._errors = []
 
         self._queue = asyncio.Queue()
-        self._enqueued_nodes = set()
+        self._enqueued_nodes = set()  # ? REASON: avoid duplicate nodes being enqueued
         self._lock = asyncio.Lock()
         self._stop: asyncio.Event = asyncio.Event()
 
@@ -78,8 +79,8 @@ class AsyncTreeExecutor:
         return self._uuid
 
     @property
-    def results(self):
-        return self._output_results
+    def results(self) -> list[tuple[str, list[Any]]]:
+        return self._output_values
 
     def __or__(self, tree_dict: dict[Node, Any]):
         """
@@ -153,6 +154,35 @@ class AsyncTreeExecutor:
 
         delattr(self, "_pending_connections")
 
+    async def _adjust_dynamic_workers(self, node: Node):
+        """
+        Adjusts the number of workers based on the queue size and current worker count.
+        """
+        if not self._use_dynamic_workers:
+            return
+        async with self._lock:
+            if self._queue.qsize() > len(self._workers):
+                workers_to_add = min(
+                    self._max_workers - len(self._workers),
+                    len(node.children),
+                )
+                for _ in range(workers_to_add):
+                    self._workers.append(asyncio.create_task(self.__worker()))
+                logger.debug(
+                    f"Added {workers_to_add} workers. Current workers: {len(self._workers)}"
+                )
+            else:
+                workers_to_remove = min(
+                    len(self._workers) - self._queue.qsize(),
+                    len(self._workers) - self._min_workers,
+                )
+                for _ in range(workers_to_remove):
+                    self._queue.put_nowait(None)
+                    self._workers.pop()
+                logger.debug(
+                    f"Removed {workers_to_remove} workers. Current workers: {len(self._workers)}"
+                )
+
     async def __worker(self):
         """
         A worker that executes the work contained in a Node.
@@ -166,43 +196,21 @@ class AsyncTreeExecutor:
 
             try:
                 # Run the node
-                await node.run()
+                if inspect.isasyncgenfunction(node.coroutine):
+                    async for result in node.run_yielding():
+                        self._output_values.append((node.uuid, result))
+                else:
+                    await node.run()
+                self._output_nodes.append(node)
 
                 # Enqueue children
                 for child in node.children:
                     if child not in self._enqueued_nodes:
                         self._enqueued_nodes.add(child)
                         self._queue.put_nowait(child)
+                await self._adjust_dynamic_workers(node)
 
-                # Adjust workers based on queue size and current worker count
-                if self._use_dynamic_workers:
-                    async with self._lock:
-                        if self._queue.qsize() > len(self._workers):
-                            workers_to_add = min(
-                                self._max_workers - len(self._workers),
-                                len(node.children),
-                            )
-                            for _ in range(workers_to_add):
-                                self._workers.append(
-                                    asyncio.create_task(self.__worker())
-                                )
-                            logger.debug(
-                                f"Added {workers_to_add} workers. Current workers: {len(self._workers)}"
-                            )
-                        else:
-                            workers_to_remove = min(
-                                len(self._workers) - self._queue.qsize(),
-                                len(self._workers) - self._min_workers,
-                            )
-                            for _ in range(workers_to_remove):
-                                self._queue.put_nowait(None)
-                                self._workers.pop()
-                            logger.debug(
-                                f"Removed {workers_to_remove} workers. Current workers: {len(self._workers)}"
-                            )
-
-                self._output_nodes.append(node)
-                self._output_results.append({node.uuid: node.output})
+                # Add node to output nodes and tree results
                 self._enqueued_nodes.remove(node)
             except Exception as e:
                 self._errors.append(e)
@@ -263,7 +271,7 @@ class AsyncTreeExecutor:
     async def yielding(
         self,
         latency: float = 0.01,
-    ) -> AsyncGenerator[Node, None]:
+    ) -> AsyncGenerator[Node | tuple[str, list[Any]], None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """
@@ -288,17 +296,19 @@ class AsyncTreeExecutor:
         )
         start_time = time.time()
 
-        completed_nodes = []
-        while not self._stop.is_set():
+        while len(self._enqueued_nodes) > 0 or self._output_nodes:
             while self._output_nodes:
-                node = self._output_nodes.pop(0)
-                completed_nodes.append(node)
-                yield node
+                yield self._output_nodes.pop(0)
+            while self._output_values:
+                node_uuid, result = self._output_values.pop(0)
+                yield node_uuid, result
+            if (
+                self._stop.is_set()
+                and not self._output_nodes
+                and not self._output_values
+            ):
                 break
-            if len(self._enqueued_nodes) == 0:
-                break
-
-            await asyncio.sleep(latency)  # Small delay to prevent busy-waiting
+            await asyncio.sleep(latency)  # ? REASON: prevent busy-waiting
 
         await self._queue.join()
         await self.stop_tree()

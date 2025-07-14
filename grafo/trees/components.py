@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 from collections import namedtuple
-from typing import Any, Callable, Generic, Optional, TypeVar
+from typing import Any, AsyncGenerator, Callable, Generic, Optional, TypeVar
 from uuid import uuid4
 
 from grafo._internal import logger
@@ -80,7 +80,7 @@ class Node(Generic[T]):
         self.uuid: str = uuid or str(uuid4())
         if not timeout:
             logger.warning(
-                "Node %s has no timeout, which can cause trees to run indefinitely. Consider setting a timeout.",
+                "Node %s was given no timeout. Defaulting to 60 seconds to avoid running indefinitely.",
                 self.uuid,
             )
 
@@ -96,7 +96,8 @@ class Node(Generic[T]):
         self.shared_lock = _shared_lock
 
         self.children: list["Node"] = []
-        self.output: Optional[T] = None
+        self._output: Optional[T] = None
+        self._aggregated_output: list[T] = []
 
         # * Inner flags
         self._event: asyncio.Event = asyncio.Event()
@@ -110,7 +111,7 @@ class Node(Generic[T]):
     def __setattr__(self, name: str, value: Any) -> None:
         # ? REASON: check if _is_running exists to avoid interfering during __init__
         if (
-            name not in ["_level", "_is_running", "output"]
+            name not in ["_level", "_is_running", "_output"]
             and hasattr(self, "_is_running")
             and self._is_running
         ):
@@ -118,6 +119,18 @@ class Node(Generic[T]):
                 f"Cannot change property '{name}' while the node is running."
             )
         super().__setattr__(name, value)
+
+    @property
+    def output(self) -> T | None:
+        return self._output
+
+    @property
+    def aggregated_output(self) -> list[T] | None:
+        if not inspect.isasyncgenfunction(self.coroutine):
+            raise ValueError(
+                "Cannot access aggregated_output because Node does not contain a coroutine that yields values."
+            )
+        return self._aggregated_output
 
     def _add_event(self, event: asyncio.Event):
         """
@@ -218,7 +231,7 @@ class Node(Generic[T]):
             self._is_running = True
 
             runtime_kwargs = self._eval_kwargs(self.kwargs)
-            self.output = await self.coroutine(**runtime_kwargs)
+            self._output = await self.coroutine(**runtime_kwargs)
             self._event.set()
         finally:
             self._is_running = False
@@ -228,7 +241,33 @@ class Node(Generic[T]):
                 f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
             )
 
-    async def run(self):
+    @safe_execution
+    async def _run_yielding(self) -> AsyncGenerator[Any, None]:
+        """
+        Asynchronously runs the coroutine of in this node.
+        """
+        try:
+            start_time = time.time()
+            logger.info(
+                f"{'|   ' * self.metadata.level}\033[4m\033[93mRunning\033[0m {self}"
+            )
+            self._is_running = True
+
+            runtime_kwargs = self._eval_kwargs(self.kwargs)
+            async for result in self.coroutine(**runtime_kwargs):
+                self._aggregated_output.append(result)
+                self._output = result
+                yield result
+            self._event.set()
+        finally:
+            self._is_running = False
+            end_time = time.time()
+            self.metadata = self.metadata._replace(runtime=end_time - start_time)
+            logger.info(
+                f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
+            )
+
+    async def run(self) -> Any:
         """
         Wraps the run method to run the on_before_run and on_after_run callbacks.
         """
@@ -239,4 +278,18 @@ class Node(Generic[T]):
         )
         await self._on_before_run()
         await self._run()
+        await self._on_after_run()
+
+    async def run_yielding(self) -> AsyncGenerator[Any, None]:
+        """
+        Wraps the run method to run the on_before_run and on_after_run callbacks.
+        """
+        logger.debug(f"{'|   ' * self.metadata.level}Awaiting {self} parents...")
+        await asyncio.wait_for(
+            asyncio.gather(*[e.wait() for e in self._parent_events]),
+            timeout=self._timeout,
+        )
+        await self._on_before_run()
+        async for result in self._run_yielding():
+            yield result
         await self._on_after_run()

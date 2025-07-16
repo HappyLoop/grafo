@@ -57,7 +57,7 @@ class AsyncTreeExecutor:
 
         self._workers = []
         self._output_nodes = []
-        self._output_values: list[tuple[str, list[Any]]] = []
+        self._output_values: list[tuple[str, Any]] = []
         self._errors = []
 
         self._queue = asyncio.Queue()
@@ -271,7 +271,7 @@ class AsyncTreeExecutor:
     async def yielding(
         self,
         latency: float = 0.01,
-    ) -> AsyncGenerator[Node | tuple[str, list[Any]], None]:
+    ) -> AsyncGenerator[Node | tuple[str, Any], None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """

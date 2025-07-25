@@ -96,7 +96,7 @@ class Node(Generic[T]):
         self._is_running: bool = False
         self._parent_events: list[asyncio.Event] = []
         self._timeout: Optional[float] = timeout
-        self._forward_as: Optional[str] = forward_as
+        self._forward_map: dict[str, str] = {}
         if not timeout:
             logger.warning(
                 "Node %s was given no timeout. Defaulting to 60 seconds to avoid running indefinitely.",
@@ -169,7 +169,7 @@ class Node(Generic[T]):
         runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
         await callback(**runtime_kwargs)
 
-    async def connect(self, child: "Node"):
+    async def connect(self, child: "Node", forward_as: Optional[str] = None):
         """
         Connects a child to this node.
         """
@@ -178,6 +178,8 @@ class Node(Generic[T]):
         child.set_level(self.metadata.level + 1)
         if self.on_connect:
             await self._run_callback(self.on_connect)
+        if forward_as:
+            self._forward_map[child.uuid] = forward_as
 
     async def disconnect(self, child: "Node"):
         """
@@ -193,6 +195,8 @@ class Node(Generic[T]):
         # ? NOTE: no level removal because nodes can have multiple parents
         if self.on_disconnect:
             await self._run_callback(self.on_disconnect)
+        if child.uuid in self._forward_map:
+            del self._forward_map[child.uuid]
 
     async def redirect(self, targets: list["Node"]):
         """
@@ -277,13 +281,13 @@ class Node(Generic[T]):
         )
         await self._on_before_run()
         await self._run()
-        if self._forward_as:
-            for child in self.children:
-                if self._forward_as in child.kwargs:
+        for child in self.children:
+            if child.uuid in self._forward_map:
+                if self._forward_map[child.uuid] in child.kwargs:
                     raise ValueError(
-                        f"{self} is trying to forward its output as `{self._forward_as}` to {child} but it already has an argument with that name."
+                        f"{self} is trying to forward its output as `{self._forward_map[child.uuid]}` to {child} but it already has an argument with that name."
                     )
-                child.kwargs[self._forward_as] = self._output
+                child.kwargs[self._forward_map[child.uuid]] = self._output
         await self._on_after_run()
 
     async def run_yielding(self) -> AsyncGenerator[Any, None]:
@@ -298,11 +302,11 @@ class Node(Generic[T]):
         await self._on_before_run()
         async for result in self._run_yielding():
             yield result
-        if self._forward_as:
-            for child in self.children:
-                if self._forward_as in child.kwargs:
+        for child in self.children:
+            if child.uuid in self._forward_map:
+                if self._forward_map[child.uuid] in child.kwargs:
                     raise ValueError(
-                        f"{self} is trying to forward its output as `{self._forward_as}` to {child} but it already has an argument with that name."
+                        f"{self} is trying to forward its output as `{self._forward_map[child.uuid]}` to {child} but it already has an argument with that name."
                     )
-                child.kwargs[self._forward_as] = self._aggregated_output
+                child.kwargs[self._forward_map[child.uuid]] = self._output
         await self._on_after_run()

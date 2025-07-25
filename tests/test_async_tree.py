@@ -597,17 +597,17 @@ async def test_forwarding_success():
         forwarded_values["C"] = result
         return result
 
-    # Create nodes with forwarding configuration
-    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine, forward_as="data_from_A")
-    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine, forward_as="data_from_B")
+    # Create nodes without forwarding configuration in constructor
+    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine)
+    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine)
     node_c = Node(uuid="nodeC", coroutine=node_c_coroutine)
 
     # Set up C with only non-conflicting values
     node_c.kwargs["existing_value"] = "original_value"
 
-    # Connect the nodes: A -> B -> C
-    await node_a.connect(node_b)
-    await node_b.connect(node_c)
+    # Connect the nodes with forwarding: A -> B -> C
+    await node_a.connect(node_b, forward_as="data_from_A")
+    await node_b.connect(node_c, forward_as="data_from_B")
 
     # Create executor and run the tree
     executor = AsyncTreeExecutor(
@@ -633,8 +633,8 @@ async def test_forwarding_success():
 @pytest.mark.asyncio
 async def test_forwarding_conflict_error():
     """
-    Test successful forwarding behavior where A -> B -> C, with A forwarding output to B properly,
-    and B forwarding output to C without conflicts.
+    Test forwarding behavior where a conflict occurs when trying to forward to a child
+    that already has an argument with the same name.
     """
     # Track forwarded values to verify the behavior
     forwarded_values = {}
@@ -663,22 +663,21 @@ async def test_forwarding_conflict_error():
         forwarded_values["C"] = result
         return result
 
-    # Create nodes with forwarding configuration
-    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine, forward_as="data_from_A")
-    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine, forward_as="data_from_B")
+    # Create nodes without forwarding configuration in constructor
+    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine)
+    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine)
     node_c = Node(uuid="nodeC", coroutine=node_c_coroutine)
 
-    # Set up C with a value that will raise an error
+    # Set up C with a value that will cause a conflict
     node_c.kwargs["data_from_B"] = "will_raise_error"
 
-    # Connect the nodes: A -> B -> C
-    await node_a.connect(node_b)
-    await node_b.connect(node_c)
+    # Connect the nodes with forwarding: A -> B -> C
+    await node_a.connect(node_b, forward_as="data_from_A")
+    await node_b.connect(node_c, forward_as="data_from_B")
 
-    # with pytest.raises(ValueError):
     # Create executor and run the tree
     executor = AsyncTreeExecutor(
-        uuid="Forwarding Success Test", roots=[node_a], num_workers=3
+        uuid="Forwarding Conflict Test", roots=[node_a], num_workers=3
     )
     result = await executor.run()
 

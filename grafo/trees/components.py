@@ -175,7 +175,8 @@ class Node(Generic[T]):
         """
         self.children.append(child)
         child._add_event(self._event)
-        child.set_level(self.metadata.level + 1)
+        if self.metadata.level + 1 > child.metadata.level:
+            child.set_level(self.metadata.level + 1)
         if self.on_connect:
             await self._run_callback(self.on_connect)
         if forward_as:

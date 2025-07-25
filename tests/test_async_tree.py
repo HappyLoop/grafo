@@ -109,21 +109,16 @@ async def test_picker():
     grandchild_node1 = create_node("grandchild1", mockup_coroutine)
     grandchild_node2 = create_node("grandchild2", mockup_coroutine)
 
-    # Using a JSON-like structure and the '|' operator to build the tree
-    nodes = {
-        root_node: {
-            child_node1: None,
-            child_node2: [grandchild_node1],
-            child_node3: [grandchild_node2],
-        }
-    }
+    await root_node.connect(child_node1)
+    await root_node.connect(child_node2)
+    await root_node.connect(child_node3)
+    await child_node2.connect(grandchild_node1)
+    await child_node3.connect(grandchild_node2)
 
-    # Forward the results of each node to its children as arguments
     executor = AsyncTreeExecutor(
-        uuid="Picker Tree", use_dynamic_workers=False, num_workers=10
+        uuid="Picker Tree", roots=[root_node], use_dynamic_workers=False, num_workers=10
     )
-    tree = executor | nodes
-    result = await tree.run()
+    result = await executor.run()
 
     # Assert result
     nodes_uuids = [
@@ -149,21 +144,20 @@ async def test_union():
     grandchild_node1 = create_node("grandchild1", mockup_coroutine)
     grandchild_node2 = create_node("grandchild2", mockup_coroutine)
 
-    # Using a JSON-like structure and the '|' operator to build the tree
-    nodes = {
-        root_node: {
-            child_node1: None,
-            child_node2: [grandchild_node1],
-            child_node3: {grandchild_node1: [grandchild_node2]},
-        }
-    }
+    await root_node.connect(child_node1)
+    await root_node.connect(child_node2)
+    await root_node.connect(child_node3)
+    await child_node2.connect(grandchild_node1)
+    await child_node3.connect(grandchild_node1)
+    await grandchild_node1.connect(grandchild_node2)
 
-    # Forward the results of each node to its children as arguments
     executor = AsyncTreeExecutor(
-        uuid="Union Tree", use_dynamic_workers=False, num_workers=10
+        uuid="Union Tree",
+        roots=[root_node],
+        use_dynamic_workers=False,
+        num_workers=10,
     )
-    tree = executor | nodes
-    result = await tree.run()
+    result = await executor.run()
 
     # Assert result
     nodes_uuids = [
@@ -190,25 +184,21 @@ async def test_error():
     grandchild_node1 = create_node("grandchild1", mockup_coroutine)
     grandchild_node2 = create_node("grandchild2", mockup_coroutine)
 
-    # Using a JSON-like structure and the '|' operator to build the tree
-    nodes = {
-        root_node: {
-            child_node1: [grandchild_node1],
-            child_node2: [grandchild_node2],
-        }
-    }
+    await root_node.connect(child_node1)
+    await root_node.connect(child_node2)
+    await child_node1.connect(grandchild_node1)
+    await child_node2.connect(grandchild_node2)
 
-    # Forward the results of each node to its children as arguments
     executor = AsyncTreeExecutor(
-        uuid="Error Tree", use_dynamic_workers=False, num_workers=10
+        uuid="Error Tree", roots=[root_node], use_dynamic_workers=False, num_workers=10
     )
-    tree = executor | nodes
-    result = await tree.run()
+    result = await executor.run()
 
     # Assert result
     nodes_uuids = [root_node.uuid, child_node1.uuid, grandchild_node1.uuid]
     assert all(node.uuid in nodes_uuids for node in result)
     assert child_node2.uuid not in nodes_uuids
+    assert grandchild_node2.uuid not in nodes_uuids
     logger.info(result)
 
 
@@ -222,17 +212,17 @@ async def test_yielding():
     grandchild_node1 = create_node("grandchild1", mockup_coroutine)
     grandchild_node2 = create_node("grandchild2", mockup_coroutine)
 
+    await root_node.connect(child_node1)
+    await child_node1.connect(grandchild_node1)
+    await child_node1.connect(grandchild_node2)
+
     # Manually connecting nodes
-    nodes = {
-        root_node: {
-            child_node1: [grandchild_node1, grandchild_node2],
-        }
-    }
-    executor = AsyncTreeExecutor(uuid="Yielding Tree", use_dynamic_workers=True)
-    tree = executor | nodes
+    executor = AsyncTreeExecutor(
+        uuid="Yielding Tree", roots=[root_node], use_dynamic_workers=True
+    )
     results = []
 
-    async for node in tree.yielding():
+    async for node in executor.yielding():
         if not isinstance(node, Node):
             continue
         results.append((node.uuid, node))
@@ -263,10 +253,6 @@ async def test_yield_with_timeout():
         logger.info(f"{node.uuid} executed")
         return f"{node.uuid} result"
 
-    executor = AsyncTreeExecutor(
-        uuid="Yielding Tree with Timeout", use_dynamic_workers=False, num_workers=10
-    )
-
     root_node = create_node("root", mockup_coroutine)
     child1_node = create_node("child1", long_running_coroutine)
     child2_node = create_node("child2", mockup_coroutine)
@@ -276,18 +262,20 @@ async def test_yield_with_timeout():
         timeout=1,
     )
 
-    # Build the tree using a JSON-like structure
-    nodes = {
-        root_node: {
-            child1_node: [union_node],
-            child2_node: [union_node],
-        }
-    }
+    await root_node.connect(child1_node)
+    await root_node.connect(child2_node)
+    await child1_node.connect(union_node)
+    await child2_node.connect(union_node)
 
-    tree = executor | nodes
+    executor = AsyncTreeExecutor(
+        uuid="Yielding Tree with Timeout",
+        roots=[root_node],
+        use_dynamic_workers=False,
+        num_workers=10,
+    )
+
     results = []
-
-    async for node in tree.yielding():
+    async for node in executor.yielding():
         if not isinstance(node, Node):
             continue
         results.append((node.uuid, node))
@@ -321,18 +309,18 @@ async def test_simple_tree_structure():
     grandchild3_node = create_node("grandchild3", mockup_coroutine)
     grandchild4_node = create_node("grandchild4", mockup_coroutine)
 
-    # Build the tree using a dictionary structure
-    nodes = {
-        root_node: {
-            child1_node: [grandchild1_node, grandchild2_node],
-            child2_node: [grandchild3_node, grandchild4_node],
-        }
-    }
+    await root_node.connect(child1_node)
+    await root_node.connect(child2_node)
+    await child1_node.connect(grandchild1_node)
+    await child1_node.connect(grandchild2_node)
+    await child2_node.connect(grandchild3_node)
+    await child2_node.connect(grandchild4_node)
 
     # Create executor and build the tree
-    executor = AsyncTreeExecutor(uuid="Simple Tree", use_dynamic_workers=True)
-    tree = executor | nodes
-    result = await tree.run()
+    executor = AsyncTreeExecutor(
+        uuid="Simple Tree", roots=[root_node], use_dynamic_workers=True
+    )
+    result = await executor.run()
 
     # Assert all nodes were processed
     expected_nodes = [
@@ -368,20 +356,20 @@ async def test_multiple_roots_structure():
     grandchild3_node = create_node("grandchild3", mockup_coroutine)
     grandchild4_node = create_node("grandchild4", mockup_coroutine)
 
-    # Build the tree using a dictionary structure with multiple roots
-    nodes = {
-        root1_node: {
-            child1_node: [grandchild1_node, grandchild2_node],
-        },
-        root2_node: {
-            child2_node: [grandchild3_node, grandchild4_node],
-        },
-    }
+    await root1_node.connect(child1_node)
+    await root2_node.connect(child2_node)
+    await child1_node.connect(grandchild1_node)
+    await child1_node.connect(grandchild2_node)
+    await child2_node.connect(grandchild3_node)
+    await child2_node.connect(grandchild4_node)
 
     # Create executor and build the tree
-    executor = AsyncTreeExecutor(uuid="Multiple Roots Tree", use_dynamic_workers=True)
-    tree = executor | nodes
-    result = await tree.run()
+    executor = AsyncTreeExecutor(
+        uuid="Multiple Roots Tree",
+        roots=[root1_node, root2_node],
+        use_dynamic_workers=True,
+    )
+    result = await executor.run()
 
     # Assert all nodes were processed
     expected_nodes = [
@@ -574,3 +562,135 @@ async def test_mixed_tree_with_yielding():
     logger.info(f"Completed nodes: {node_completions}")
     logger.info(f"Intermediate results count: {len(intermediate_results)}")
     logger.info(f"Total results: {len(results)}")
+
+
+@pytest.mark.asyncio
+async def test_forwarding_success():
+    """
+    Test successful forwarding behavior where A -> B -> C, with A forwarding output to B properly,
+    and B forwarding output to C without conflicts.
+    """
+    # Track forwarded values to verify the behavior
+    forwarded_values = {}
+
+    async def node_a_coroutine():
+        """Node A produces a value and forwards it to B."""
+        result = "data_from_A"
+        forwarded_values["A"] = result
+        return result
+
+    async def node_b_coroutine(data_from_A: str):
+        """Node B receives data from A, processes it, and forwards to C."""
+        # Verify B received the forwarded data from A
+        assert data_from_A == "data_from_A"
+        result = f"processed_{data_from_A}"
+        forwarded_values["B"] = result
+        return result
+
+    async def node_c_coroutine(data_from_B: str, existing_value: str):
+        """Node C receives data from B without conflicts."""
+        # Verify C received the forwarded data from B
+        assert data_from_B == "processed_data_from_A"
+        # The existing_value should remain unchanged (it's a different parameter)
+        assert existing_value == "original_value"
+        result = f"final_{data_from_B}"
+        forwarded_values["C"] = result
+        return result
+
+    # Create nodes with forwarding configuration
+    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine, forward_as="data_from_A")
+    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine, forward_as="data_from_B")
+    node_c = Node(uuid="nodeC", coroutine=node_c_coroutine)
+
+    # Set up C with only non-conflicting values
+    node_c.kwargs["existing_value"] = "original_value"
+
+    # Connect the nodes: A -> B -> C
+    await node_a.connect(node_b)
+    await node_b.connect(node_c)
+
+    # Create executor and run the tree
+    executor = AsyncTreeExecutor(
+        uuid="Forwarding Success Test", roots=[node_a], num_workers=3
+    )
+    result = await executor.run()
+
+    # Assert all nodes were processed
+    expected_nodes = [node_a.uuid, node_b.uuid, node_c.uuid]
+    assert all(node.uuid in expected_nodes for node in result)
+    assert len(result) == len(expected_nodes)
+
+    # Verify the forwarding chain worked correctly
+    assert forwarded_values["A"] == "data_from_A"
+    assert forwarded_values["B"] == "processed_data_from_A"
+    assert forwarded_values["C"] == "final_processed_data_from_A"
+
+    # Verify the final state of node C's kwargs
+    assert node_c.kwargs["data_from_B"] == "processed_data_from_A"
+    assert node_c.kwargs["existing_value"] == "original_value"
+
+
+@pytest.mark.asyncio
+async def test_forwarding_conflict_error():
+    """
+    Test successful forwarding behavior where A -> B -> C, with A forwarding output to B properly,
+    and B forwarding output to C without conflicts.
+    """
+    # Track forwarded values to verify the behavior
+    forwarded_values = {}
+
+    async def node_a_coroutine():
+        """Node A produces a value and forwards it to B."""
+        result = "data_from_A"
+        forwarded_values["A"] = result
+        return result
+
+    async def node_b_coroutine(data_from_A: str):
+        """Node B receives data from A, processes it, and forwards to C."""
+        # Verify B received the forwarded data from A
+        assert data_from_A == "data_from_A"
+        result = f"processed_{data_from_A}"
+        forwarded_values["B"] = result
+        return result
+
+    async def node_c_coroutine(data_from_B: str, existing_value: str):
+        """Node C receives data from B without conflicts."""
+        # Verify C received the forwarded data from B
+        assert data_from_B == "processed_data_from_A"
+        # The existing_value should remain unchanged (it's a different parameter)
+        assert existing_value == "original_value"
+        result = f"final_{data_from_B}"
+        forwarded_values["C"] = result
+        return result
+
+    # Create nodes with forwarding configuration
+    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine, forward_as="data_from_A")
+    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine, forward_as="data_from_B")
+    node_c = Node(uuid="nodeC", coroutine=node_c_coroutine)
+
+    # Set up C with a value that will raise an error
+    node_c.kwargs["data_from_B"] = "will_raise_error"
+
+    # Connect the nodes: A -> B -> C
+    await node_a.connect(node_b)
+    await node_b.connect(node_c)
+
+    # with pytest.raises(ValueError):
+    # Create executor and run the tree
+    executor = AsyncTreeExecutor(
+        uuid="Forwarding Success Test", roots=[node_a], num_workers=3
+    )
+    result = await executor.run()
+
+    # Assert all nodes were processed
+    expected_nodes = [node_a.uuid, node_b.uuid, node_c.uuid]
+    assert all(node.uuid in expected_nodes for node in result)
+    assert len(result) == 1
+
+    # Verify the forwarding chain worked correctly
+    assert forwarded_values["A"] == "data_from_A"
+    assert forwarded_values["B"] == "processed_data_from_A"
+    assert "C" not in forwarded_values.keys()
+
+    # Verify the final state of node C's kwargs
+    assert node_c.kwargs["data_from_B"] == "will_raise_error"

@@ -82,78 +82,6 @@ class AsyncTreeExecutor:
     def results(self) -> list[tuple[str, list[Any]]]:
         return self._output_values
 
-    def __or__(self, tree_dict: dict[Node, Any]):
-        """
-        Override the `|` operator to create an instance of AsyncTreeExecutor and builds
-        a tree of nodes from nested dictionaries.
-
-        Example:
-        {
-            Node1: {
-                Node2: {
-                    Node3: {
-                        Node4: {}
-                    }
-                },
-                Node5: {}
-            }
-        }
-
-        The structure can go on indefinitely.
-
-        NOTE: If the tree contains more than one node in the 1st level, the executor will
-        treat them as multiple root nodes.
-        """
-        if self._roots:
-            raise ValueError(
-                "Root nodes have been provided, indicating a manual tree construction. Cannot use the | operator syntax."
-            )
-
-        # Store the tree structure for later async processing
-        if len(tree_dict) == 1:
-            root_node, children_iterable = next(iter(tree_dict.items()))
-            self._roots = [root_node]
-            self._pending_connections = [(root_node, children_iterable)]
-        else:
-            # Multiple roots in the dictionary
-            self._roots = list(tree_dict.keys())
-            self._pending_connections = [
-                (node, tree_dict[node]) for node in self._roots
-            ]
-
-            # Adjust workers based on number of roots
-            if len(self._roots) > self._num_workers:
-                self._num_workers = len(self._roots)
-                if self._num_workers > self._max_workers:
-                    self._max_workers = self._num_workers
-
-        return self
-
-    async def _build_tree(self):
-        """Helper method to build the tree structure asynchronously"""
-        if not hasattr(self, "_pending_connections"):
-            return
-
-        async def connect_children(
-            parent_node: Node, children_iterable: dict[Node, Any] | list[Node]
-        ):
-            if isinstance(children_iterable, dict):
-                for child_node, descendants_iterable in children_iterable.items():
-                    await parent_node.connect(child_node)
-                    await connect_children(child_node, descendants_iterable)
-            elif isinstance(children_iterable, list):
-                for child_node in children_iterable:
-                    await parent_node.connect(child_node)
-
-        for parent_node, children_iterable in self._pending_connections:
-            if isinstance(children_iterable, dict):
-                await connect_children(parent_node, children_iterable)
-            elif isinstance(children_iterable, list):
-                for child_node in children_iterable:
-                    await parent_node.connect(child_node)
-
-        delattr(self, "_pending_connections")
-
     async def _adjust_dynamic_workers(self, node: Node):
         """
         Adjusts the number of workers based on the queue size and current worker count.
@@ -198,7 +126,7 @@ class AsyncTreeExecutor:
                 # Run the node
                 if inspect.isasyncgenfunction(node.coroutine):
                     async for result in node.run_yielding():
-                        self._output_values.append((node.uuid, result))
+                        self._output_values.append(result)
                 else:
                     await node.run()
                 self._output_nodes.append(node)
@@ -237,8 +165,6 @@ class AsyncTreeExecutor:
         """
         Runs the tree with the specified number of workers.
         """
-        await self._build_tree()  # Build the tree before running
-
         levels = []
         for root in self._roots:
             levels.append(root.metadata.level)
@@ -275,8 +201,6 @@ class AsyncTreeExecutor:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """
-        await self._build_tree()
-
         levels = []
         for root in self._roots:
             levels.append(root.metadata.level)
@@ -300,8 +224,7 @@ class AsyncTreeExecutor:
             while self._output_nodes:
                 yield self._output_nodes.pop(0)
             while self._output_values:
-                node_uuid, result = self._output_values.pop(0)
-                yield node_uuid, result
+                yield self._output_values.pop(0)
             if (
                 self._stop.is_set()
                 and not self._output_nodes

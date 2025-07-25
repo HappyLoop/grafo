@@ -18,5 +18,8 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = []
+dependencies = [
+    "pytest-asyncio>=0.16.0",
+    "pytest>=7.0.1",
+]
 requires-python = ">=3.6"

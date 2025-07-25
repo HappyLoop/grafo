@@ -40,7 +40,6 @@ class Node(Generic[T]):
     :param coroutine: The coroutine function to execute.
     :param kwargs: Optional; the keyword arguments to pass to the coroutine.
     :param uuid: The unique identifier of the node.
-    :param state: Optional; a dict containing some state to be held by the node.
     :param metadata: Optional; a dict containing at least "name" and "description" for the node.
     :param timeout: Optional; the timeout for the node. If not provided, a warning will be logged.
 
@@ -61,8 +60,8 @@ class Node(Generic[T]):
         coroutine: Callable,
         kwargs: Optional[dict[str, Any]] = None,
         uuid: Optional[str] = None,
-        state: Optional[dict] = None,
         timeout: Optional[float] = 60.0,
+        forward_as: Optional[str] = None,
         on_connect: Optional[
             tuple[Callable[..., Any], Optional[dict[str, Any]]]
         ] = None,
@@ -75,35 +74,34 @@ class Node(Generic[T]):
         on_after_run: Optional[
             tuple[Callable[..., Any], Optional[dict[str, Any]]]
         ] = None,
-        _shared_lock: Optional[asyncio.Lock] = None,
     ):
         self.uuid: str = uuid or str(uuid4())
-        if not timeout:
-            logger.warning(
-                "Node %s was given no timeout. Defaulting to 60 seconds to avoid running indefinitely.",
-                self.uuid,
-            )
-
         self.coroutine: Callable = coroutine
-        self.kwargs: dict[str, Any] = kwargs if kwargs is not None else {}
-        self.state: dict = state or {}
+        self.kwargs: dict[str, Any] = kwargs or {}
         self.metadata: Metadata = Metadata(runtime=0, level=0)
+        self.children: list["Node"] = []
+
+        # * Output
+        self._output: Optional[T] = None
+        self._aggregated_output: list[T] = []
+
+        # * Events
         self.on_connect = on_connect
         self.on_disconnect = on_disconnect
         self.on_before_run = on_before_run
         self.on_after_run = on_after_run
-
-        self.shared_lock = _shared_lock
-
-        self.children: list["Node"] = []
-        self._output: Optional[T] = None
-        self._aggregated_output: list[T] = []
 
         # * Inner flags
         self._event: asyncio.Event = asyncio.Event()
         self._is_running: bool = False
         self._parent_events: list[asyncio.Event] = []
         self._timeout: Optional[float] = timeout
+        self._forward_as: Optional[str] = forward_as
+        if not timeout:
+            logger.warning(
+                "Node %s was given no timeout. Defaulting to 60 seconds to avoid running indefinitely.",
+                self.uuid,
+            )
 
     def __repr__(self) -> str:
         return f"Node(uuid={self.uuid}, level={self.metadata.level})"
@@ -196,13 +194,14 @@ class Node(Generic[T]):
         if self.on_disconnect:
             await self._run_callback(self.on_disconnect)
 
-    async def redirect(self, target: "Node"):
+    async def redirect(self, targets: list["Node"]):
         """
         Convenience method to disconnect all children and connect to a new target.
         """
         for child in self.children:
             await self.disconnect(child)
-        await self.connect(target)
+        for target in targets:
+            await self.connect(target)
 
     async def _on_before_run(self):
         """
@@ -257,7 +256,7 @@ class Node(Generic[T]):
             async for result in self.coroutine(**runtime_kwargs):
                 self._aggregated_output.append(result)
                 self._output = result
-                yield result
+                yield (self.uuid, result)
             self._event.set()
         finally:
             self._is_running = False
@@ -278,6 +277,13 @@ class Node(Generic[T]):
         )
         await self._on_before_run()
         await self._run()
+        if self._forward_as:
+            for child in self.children:
+                if self._forward_as in child.kwargs:
+                    raise ValueError(
+                        f"{self} is trying to forward its output as `{self._forward_as}` to {child} but it already has an argument with that name."
+                    )
+                child.kwargs[self._forward_as] = self._output
         await self._on_after_run()
 
     async def run_yielding(self) -> AsyncGenerator[Any, None]:
@@ -292,4 +298,11 @@ class Node(Generic[T]):
         await self._on_before_run()
         async for result in self._run_yielding():
             yield result
+        if self._forward_as:
+            for child in self.children:
+                if self._forward_as in child.kwargs:
+                    raise ValueError(
+                        f"{self} is trying to forward its output as `{self._forward_as}` to {child} but it already has an argument with that name."
+                    )
+                child.kwargs[self._forward_as] = self._aggregated_output
         await self._on_after_run()

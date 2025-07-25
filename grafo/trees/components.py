@@ -33,6 +33,34 @@ Metadata = namedtuple("Metadata", ["runtime", "level"])
 T = TypeVar("T")
 
 
+class Chunk(Generic[T]):
+    def __init__(self, uuid: str, output: T):
+        self._uuid = uuid
+        self._output = output
+
+    def __repr__(self) -> str:
+        return f"Chunk(uuid={self.uuid}, output={self.output})"
+
+    def __eval__(self) -> T:
+        return self.output
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, Chunk):
+            return False
+        return self.output == value.output
+
+    def __bool__(self) -> bool:
+        return self.output is not None
+
+    @property
+    def uuid(self) -> str:
+        return self._uuid
+
+    @property
+    def output(self) -> T:
+        return self._output
+
+
 class Node(Generic[T]):
     """
     A Node is a unit of work that can be executed concurrently. It contains a coroutine function that is executed by a worker.
@@ -61,7 +89,6 @@ class Node(Generic[T]):
         kwargs: Optional[dict[str, Any]] = None,
         uuid: Optional[str] = None,
         timeout: Optional[float] = 60.0,
-        forward_as: Optional[str] = None,
         on_connect: Optional[
             tuple[Callable[..., Any], Optional[dict[str, Any]]]
         ] = None,
@@ -256,12 +283,11 @@ class Node(Generic[T]):
                 f"{'|   ' * self.metadata.level}\033[4m\033[93mRunning\033[0m {self}"
             )
             self._is_running = True
-
             runtime_kwargs = self._eval_kwargs(self.kwargs)
             async for result in self.coroutine(**runtime_kwargs):
                 self._aggregated_output.append(result)
                 self._output = result
-                yield (self.uuid, result)
+                yield Chunk[type[result]](self.uuid, result)
             self._event.set()
         finally:
             self._is_running = False

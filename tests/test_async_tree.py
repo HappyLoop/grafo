@@ -1,4 +1,5 @@
 import asyncio
+from grafo.trees.components import Chunk
 import logging
 import random
 from typing import Any, Callable, Optional
@@ -512,7 +513,7 @@ async def test_mixed_tree_with_yielding():
     # Test the yielding method to get both node completions and intermediate results
     results = []
     node_completions = []
-    intermediate_results = []
+    intermediate_results: list[Chunk[str]] = []
 
     async for item in executor.yielding():
         if isinstance(item, Node):
@@ -522,10 +523,9 @@ async def test_mixed_tree_with_yielding():
             logger.info(f"Completed node: {item.uuid}")
         else:
             # This is an intermediate result from a yielding node
-            node_uuid, result = item
-            intermediate_results.append((node_uuid, result))
-            results.append(f"Result: {node_uuid} -> {result}")
-            logger.info(f"Intermediate result: {node_uuid} -> {result}")
+            intermediate_results.append(item)
+            results.append(f"Result: {item.uuid} -> {item.output}")
+            logger.info(f"Intermediate result: {item.uuid} -> {item.output}")
 
     # Assert that all nodes were completed
     expected_completed_nodes = [
@@ -545,9 +545,9 @@ async def test_mixed_tree_with_yielding():
     # Each yielding node should have yielded multiple results
     for yielding_node_uuid in yielding_nodes:
         node_results = [
-            result
-            for uuid, result in intermediate_results
-            if uuid == yielding_node_uuid
+            chunk.output
+            for chunk in intermediate_results
+            if chunk.uuid == yielding_node_uuid
         ]
         assert len(node_results) >= 3  # At least 3 yields per yielding node
         assert any("progress" in result for result in node_results)

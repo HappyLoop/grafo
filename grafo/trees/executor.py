@@ -7,7 +7,7 @@ import inspect
 
 from grafo._internal import logger
 
-from .components import Node
+from .components import Node, Chunk
 
 
 class AsyncTreeExecutor:
@@ -56,8 +56,8 @@ class AsyncTreeExecutor:
         self._use_dynamic_workers = use_dynamic_workers
 
         self._workers = []
-        self._output_nodes = []
-        self._output_values: list[tuple[str, Any]] = []
+        self._output_nodes: list[Node[Any]] = []
+        self._output_values: list[Chunk[Any]] = []
         self._errors = []
 
         self._queue = asyncio.Queue()
@@ -79,7 +79,7 @@ class AsyncTreeExecutor:
         return self._uuid
 
     @property
-    def results(self) -> list[tuple[str, list[Any]]]:
+    def results(self) -> list[Chunk]:
         return self._output_values
 
     async def _adjust_dynamic_workers(self, node: Node):
@@ -197,7 +197,7 @@ class AsyncTreeExecutor:
     async def yielding(
         self,
         latency: float = 0.01,
-    ) -> AsyncGenerator[Node | tuple[str, Any], None]:
+    ) -> AsyncGenerator[Node | Chunk, None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """

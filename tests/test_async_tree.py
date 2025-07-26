@@ -1,5 +1,5 @@
 import asyncio
-from grafo.trees.components import Chunk
+from grafo.components import Chunk
 import logging
 import random
 from typing import Any, Callable, Optional
@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 import pytest
 
 from grafo._internal import logger
-from grafo.trees import AsyncTreeExecutor, Node
+from grafo import AsyncTreeExecutor, Node
 
 logger.setLevel(logging.INFO)
 
@@ -693,3 +693,170 @@ async def test_forwarding_conflict_error():
 
     # Verify the final state of node C's kwargs
     assert node_c.kwargs["data_from_B"] == "will_raise_error"
+
+
+@pytest.mark.asyncio
+async def test_on_before_forward_filtering():
+    """
+    Test using on_before_forward to filter and forward different parts of node A's output
+    to different children. Node A outputs two numbers, and each child receives only one
+    of them based on the filtering logic.
+    """
+    # Track forwarded values to verify the behavior
+    forwarded_values = {}
+
+    async def node_a_coroutine():
+        """Node A produces a tuple of two numbers."""
+        result = (42, 100)
+        forwarded_values["A"] = result
+        return result
+
+    async def node_b_coroutine(first_number: int):
+        """Node B receives only the first number from A."""
+        # Verify B received only the first number
+        assert first_number == 42
+        result = f"B processed: {first_number}"
+        forwarded_values["B"] = result
+        return result
+
+    async def node_c_coroutine(second_number: int):
+        """Node C receives only the second number from A."""
+        # Verify C received only the second number
+        assert second_number == 100
+        result = f"C processed: {second_number}"
+        forwarded_values["C"] = result
+        return result
+
+    # Filter functions for on_before_forward
+    async def filter_first_number(forward_data: tuple[int, int], **kwargs) -> int:
+        """Extract only the first number from the tuple."""
+        first_num, _ = forward_data
+        return first_num
+
+    async def filter_second_number(forward_data: tuple[int, int], **kwargs) -> int:
+        """Extract only the second number from the tuple."""
+        _, second_num = forward_data
+        return second_num
+
+    # Create nodes
+    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine)
+    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine)
+    node_c = Node(uuid="nodeC", coroutine=node_c_coroutine)
+
+    # Connect A to B with filtering for first number
+    await node_a.connect(
+        node_b, forward_as="first_number", on_before_forward=(filter_first_number, {})
+    )
+
+    # Connect A to C with filtering for second number
+    await node_a.connect(
+        node_c, forward_as="second_number", on_before_forward=(filter_second_number, {})
+    )
+
+    # Create executor and run the tree
+    executor = AsyncTreeExecutor(
+        uuid="On Before Forward Filtering Test", roots=[node_a], num_workers=3
+    )
+    result = await executor.run()
+
+    # Assert all nodes were processed
+    expected_nodes = [node_a.uuid, node_b.uuid, node_c.uuid]
+    assert all(node.uuid in expected_nodes for node in result)
+    assert len(result) == len(expected_nodes)
+
+    # Verify the forwarding chain worked correctly
+    assert forwarded_values["A"] == (42, 100)
+    assert forwarded_values["B"] == "B processed: 42"
+    assert forwarded_values["C"] == "C processed: 100"
+
+    # Verify the final state of each node's kwargs
+    assert node_b.kwargs["first_number"] == 42
+    assert node_c.kwargs["second_number"] == 100
+
+    logger.info("On before forward filtering test completed successfully!")
+
+
+@pytest.mark.asyncio
+async def test_on_before_forward_with_kwargs():
+    """
+    Test using on_before_forward with additional kwargs to demonstrate
+    more complex filtering scenarios.
+    """
+    # Track forwarded values to verify the behavior
+    forwarded_values = {}
+
+    async def node_a_coroutine():
+        """Node A produces a list of numbers."""
+        result = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        forwarded_values["A"] = result
+        return result
+
+    async def node_b_coroutine(even_numbers: list[int]):
+        """Node B receives only even numbers."""
+        # Verify B received only even numbers
+        assert all(num % 2 == 0 for num in even_numbers)
+        result = f"B processed {len(even_numbers)} even numbers: {even_numbers}"
+        forwarded_values["B"] = result
+        return result
+
+    async def node_c_coroutine(odd_numbers: list[int]):
+        """Node C receives only odd numbers."""
+        # Verify C received only odd numbers
+        assert all(num % 2 == 1 for num in odd_numbers)
+        result = f"C processed {len(odd_numbers)} odd numbers: {odd_numbers}"
+        forwarded_values["C"] = result
+        return result
+
+    # Filter functions with kwargs
+    async def filter_even_numbers(forward_data: list[int], **kwargs) -> list[int]:
+        """Filter even numbers from the list."""
+        max_count = kwargs.get("max_count", len(forward_data))
+        even_nums = [num for num in forward_data if num % 2 == 0]
+        return even_nums[:max_count]
+
+    async def filter_odd_numbers(forward_data: list[int], **kwargs) -> list[int]:
+        """Filter odd numbers from the list."""
+        max_count = kwargs.get("max_count", len(forward_data))
+        odd_nums = [num for num in forward_data if num % 2 == 1]
+        return odd_nums[:max_count]
+
+    # Create nodes
+    node_a = Node(uuid="nodeA", coroutine=node_a_coroutine)
+    node_b = Node(uuid="nodeB", coroutine=node_b_coroutine)
+    node_c = Node(uuid="nodeC", coroutine=node_c_coroutine)
+
+    # Connect A to B with filtering for even numbers (max 3)
+    await node_a.connect(
+        node_b,
+        forward_as="even_numbers",
+        on_before_forward=(filter_even_numbers, {"max_count": 3}),
+    )
+
+    # Connect A to C with filtering for odd numbers (max 2)
+    await node_a.connect(
+        node_c,
+        forward_as="odd_numbers",
+        on_before_forward=(filter_odd_numbers, {"max_count": 2}),
+    )
+
+    # Create executor and run the tree
+    executor = AsyncTreeExecutor(
+        uuid="On Before Forward With Kwargs Test", roots=[node_a], num_workers=3
+    )
+    result = await executor.run()
+
+    # Assert all nodes were processed
+    expected_nodes = [node_a.uuid, node_b.uuid, node_c.uuid]
+    assert all(node.uuid in expected_nodes for node in result)
+    assert len(result) == len(expected_nodes)
+
+    # Verify the forwarding chain worked correctly
+    assert forwarded_values["A"] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert forwarded_values["B"] == "B processed 3 even numbers: [2, 4, 6]"
+    assert forwarded_values["C"] == "C processed 2 odd numbers: [1, 3]"
+
+    # Verify the final state of each node's kwargs
+    assert node_b.kwargs["even_numbers"] == [2, 4, 6]
+    assert node_c.kwargs["odd_numbers"] == [1, 3]
+
+    logger.info("On before forward with kwargs test completed successfully!")

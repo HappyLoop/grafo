@@ -1,13 +1,13 @@
 import asyncio
 import asyncio.log
+import inspect
 import time
 from typing import Any, AsyncGenerator, Optional
 from uuid import uuid4
-import inspect
 
 from grafo._internal import logger
 
-from .components import Node, Chunk
+from .components import Chunk, Node
 
 
 class AsyncTreeExecutor:

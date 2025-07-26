@@ -1,17 +1,28 @@
 import asyncio
 import inspect
 import time
-from collections import namedtuple
-from typing import Any, AsyncGenerator, Callable, Generic, Optional, TypeVar
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Generic,
+    Optional,
+    TypeVar,
+)
 from uuid import uuid4
 
-from grafo._internal import logger
-
-
-class SafeExecutionError(Exception):
-    """
-    Exception raised when a method is called on a running node.
-    """
+from grafo._internal import (
+    AwaitableCallback,
+    Chunk,
+    Metadata,
+    OnForwardCallable,
+    logger,
+)
+from grafo.errors import (
+    ForwardingOverrideError,
+    NotAsyncCallableError,
+    SafeExecutionError,
+)
 
 
 def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -29,36 +40,7 @@ def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-Metadata = namedtuple("Metadata", ["runtime", "level"])
 T = TypeVar("T")
-
-
-class Chunk(Generic[T]):
-    def __init__(self, uuid: str, output: T):
-        self._uuid = uuid
-        self._output = output
-
-    def __repr__(self) -> str:
-        return f"Chunk(uuid={self.uuid}, output={self.output})"
-
-    def __eval__(self) -> T:
-        return self.output
-
-    def __eq__(self, value: object) -> bool:
-        if not isinstance(value, Chunk):
-            return False
-        return self.output == value.output
-
-    def __bool__(self) -> bool:
-        return self.output is not None
-
-    @property
-    def uuid(self) -> str:
-        return self._uuid
-
-    @property
-    def output(self) -> T:
-        return self._output
 
 
 class Node(Generic[T]):
@@ -85,21 +67,19 @@ class Node(Generic[T]):
 
     def __init__(
         self,
-        coroutine: Callable,
+        coroutine: AwaitableCallback,
         kwargs: Optional[dict[str, Any]] = None,
         uuid: Optional[str] = None,
         timeout: Optional[float] = 60.0,
-        on_connect: Optional[
-            tuple[Callable[..., Any], Optional[dict[str, Any]]]
-        ] = None,
+        on_connect: Optional[tuple[AwaitableCallback, Optional[dict[str, Any]]]] = None,
         on_disconnect: Optional[
-            tuple[Callable[..., Any], Optional[dict[str, Any]]]
+            tuple[AwaitableCallback, Optional[dict[str, Any]]]
         ] = None,
         on_before_run: Optional[
-            tuple[Callable[..., Any], Optional[dict[str, Any]]]
+            tuple[AwaitableCallback, Optional[dict[str, Any]]]
         ] = None,
         on_after_run: Optional[
-            tuple[Callable[..., Any], Optional[dict[str, Any]]]
+            tuple[AwaitableCallback, Optional[dict[str, Any]]]
         ] = None,
     ):
         self.uuid: str = uuid or str(uuid4())
@@ -123,7 +103,13 @@ class Node(Generic[T]):
         self._is_running: bool = False
         self._parent_events: list[asyncio.Event] = []
         self._timeout: Optional[float] = timeout
-        self._forward_map: dict[str, str] = {}
+        self._forward_map: dict[
+            str,
+            tuple[
+                str,
+                Optional[tuple[OnForwardCallable, Optional[dict[str, Any]]]],
+            ],
+        ] = {}
         if not timeout:
             logger.warning(
                 "Node %s was given no timeout. Defaulting to 60 seconds to avoid running indefinitely.",
@@ -152,7 +138,7 @@ class Node(Generic[T]):
     @property
     def aggregated_output(self) -> list[T] | None:
         if not inspect.isasyncgenfunction(self.coroutine):
-            raise ValueError(
+            raise NotAsyncCallableError(
                 "Cannot access aggregated_output because Node does not contain a coroutine that yields values."
             )
         return self._aggregated_output
@@ -173,7 +159,7 @@ class Node(Generic[T]):
         """
         Sets the level of this node.
         """
-        self.metadata = self.metadata._replace(level=level)
+        self.metadata = Metadata(runtime=self.metadata.runtime, level=level)
 
     def _eval_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """
@@ -185,20 +171,43 @@ class Node(Generic[T]):
 
     async def _run_callback(
         self,
-        prop: tuple[Callable[..., Any], Optional[dict[str, Any]]],
+        prop: tuple[AwaitableCallback, Optional[dict[str, Any]]],
+        **kwargs,
     ):
         """
         Runs a callback with the given fixed kwargs.
         """
         callback, fixed_kwargs = prop
         if not inspect.iscoroutinefunction(callback):
-            raise ValueError("callback must be a coroutine function")
+            raise NotAsyncCallableError("Callback must be a coroutine function")
         runtime_kwargs = self._eval_kwargs(fixed_kwargs or {})
-        await callback(**runtime_kwargs)
+        if kwargs:
+            runtime_kwargs.update(kwargs)
+        return await callback(**runtime_kwargs)
 
-    async def connect(self, child: "Node", forward_as: Optional[str] = None):
+    async def connect(
+        self,
+        child: "Node",
+        forward_as: Optional[str] = None,
+        on_before_forward: tuple[OnForwardCallable, Optional[dict[str, Any]]]
+        | None = None,
+    ):
         """
         Connects a child to this node.
+
+        :param child: The child node to connect.
+        :param forward_as: Optional; the name of the argument to forward the output to.
+        :param on_before_forward: Optional; a tuple (callback, fixed_kwargs) triggered before the output is forwarded to the child.
+
+        >>> async def node_a_coroutine():
+        ...     return 1
+        >>> async def node_b_coroutine(output: int):
+        ...     return output + 1
+        >>> async def on_before_forward(output: int):
+        ...     return output + 1
+        >>> node_a = Node(uuid="nodeA", coroutine=node_a_coroutine)
+        >>> node_b = Node(uuid="nodeB", coroutine=node_b_coroutine)
+        >>> await node_a.connect(node_b, forward_as="output", on_before_forward=(on_before_forward, {}))
         """
         self.children.append(child)
         child._add_event(self._event)
@@ -207,7 +216,7 @@ class Node(Generic[T]):
         if self.on_connect:
             await self._run_callback(self.on_connect)
         if forward_as:
-            self._forward_map[child.uuid] = forward_as
+            self._forward_map[child.uuid] = (forward_as, on_before_forward)
 
     async def disconnect(self, child: "Node"):
         """
@@ -267,7 +276,9 @@ class Node(Generic[T]):
         finally:
             self._is_running = False
             end_time = time.time()
-            self.metadata = self.metadata._replace(runtime=end_time - start_time)
+            self.metadata = Metadata(
+                runtime=end_time - start_time, level=self.metadata.level
+            )
             logger.info(
                 f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
             )
@@ -292,10 +303,33 @@ class Node(Generic[T]):
         finally:
             self._is_running = False
             end_time = time.time()
-            self.metadata = self.metadata._replace(runtime=end_time - start_time)
+            self.metadata = Metadata(
+                runtime=end_time - start_time, level=self.metadata.level
+            )
             logger.info(
                 f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
             )
+
+    async def _forward_output(self):
+        """
+        Forwards the output of this node to a child.
+        """
+        for child in self.children:
+            if child.uuid in self._forward_map:
+                forward_as, on_before_forward = self._forward_map[child.uuid]
+                if forward_as in child.kwargs:
+                    raise ForwardingOverrideError(
+                        f"{self} is trying to forward its output as `{forward_as}` to {child} but it already has an argument with that name."
+                    )
+
+                forward_data = self._output
+                if inspect.isasyncgenfunction(self.coroutine):
+                    forward_data = self._aggregated_output
+                if on_before_forward:
+                    forward_data = await self._run_callback(
+                        on_before_forward, forward_data=forward_data
+                    )
+                child.kwargs[forward_as] = forward_data
 
     async def run(self) -> Any:
         """
@@ -308,13 +342,7 @@ class Node(Generic[T]):
         )
         await self._on_before_run()
         await self._run()
-        for child in self.children:
-            if child.uuid in self._forward_map:
-                if self._forward_map[child.uuid] in child.kwargs:
-                    raise ValueError(
-                        f"{self} is trying to forward its output as `{self._forward_map[child.uuid]}` to {child} but it already has an argument with that name."
-                    )
-                child.kwargs[self._forward_map[child.uuid]] = self._output
+        await self._forward_output()
         await self._on_after_run()
 
     async def run_yielding(self) -> AsyncGenerator[Any, None]:
@@ -329,11 +357,5 @@ class Node(Generic[T]):
         await self._on_before_run()
         async for result in self._run_yielding():
             yield result
-        for child in self.children:
-            if child.uuid in self._forward_map:
-                if self._forward_map[child.uuid] in child.kwargs:
-                    raise ValueError(
-                        f"{self} is trying to forward its output as `{self._forward_map[child.uuid]}` to {child} but it already has an argument with that name."
-                    )
-                child.kwargs[self._forward_map[child.uuid]] = self._output
+        await self._forward_output()
         await self._on_after_run()

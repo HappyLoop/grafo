@@ -733,7 +733,7 @@ async def test_on_before_forward_filtering():
         first_num, _ = forward_data
         return first_num
 
-    async def filter_second_number(forward_data: tuple[int, int], **kwargs: Any) -> int:
+    async def filter_second_number(forward_data: tuple[int, int]) -> int:
         """Extract only the second number from the tuple."""
         _, second_num = forward_data
         return second_num
@@ -747,7 +747,7 @@ async def test_on_before_forward_filtering():
     await node_a.connect(
         node_b,
         forward_as="first_number",
-        on_before_forward=(filter_first_number, dict(some=1)),
+        on_before_forward=(filter_first_number, None),
     )
 
     # Connect A to C with filtering for second number

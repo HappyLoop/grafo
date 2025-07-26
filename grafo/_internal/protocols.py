@@ -2,7 +2,7 @@ from typing import Any, Protocol, AsyncGenerator, Union, Awaitable
 
 
 class OnForwardCallable(Protocol):
-    async def __call__(self, forward_data: Any) -> Any: ...
+    async def __call__(self, forward_data: Any, *args: Any, **kwargs: Any) -> Any: ...
 
 
 class AwaitableCallback(Protocol):

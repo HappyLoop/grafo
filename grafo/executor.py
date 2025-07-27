@@ -33,6 +33,7 @@ class AsyncTreeExecutor:
     def __init__(
         self,
         uuid: Optional[str] = None,
+        description: Optional[str] = "",
         roots: Optional[list[Node]] = None,
         num_workers: int = 1,
         min_workers: int = 1,
@@ -49,6 +50,7 @@ class AsyncTreeExecutor:
             )
 
         self._uuid = uuid or str(uuid4())
+        self._description = description
         self._roots = roots or []
         self._num_workers = num_workers
         self._min_workers = min_workers
@@ -74,6 +76,16 @@ class AsyncTreeExecutor:
                 f"Initial number of workers set to {self._num_workers} to accommodate {len(self._roots)} root node(s)."
             )
 
+    def __repr__(self):
+        expression = (
+            f"UUID: {self._uuid}\nDescription: {self._description}\nStructure:\n"
+        )
+        for root in self._roots:
+            expression += f"\tRoot {root.uuid}:\n"
+            branch_expression, _ = self.__branch_depth_first_search(root)
+            expression += branch_expression
+        return expression
+
     @property
     def name(self):
         return self._uuid
@@ -82,7 +94,22 @@ class AsyncTreeExecutor:
     def results(self) -> list[Chunk]:
         return self._output_values
 
-    async def _adjust_dynamic_workers(self, node: Node):
+    def __branch_depth_first_search(
+        self, node: Node, expression: str = "", leaf_nodes: list[Node] | None = None
+    ):
+        if leaf_nodes is None:
+            leaf_nodes = []
+        if len(node.children) == 0:
+            leaf_nodes.append(node)
+        for child in node.children:
+            expression += f"\t\t{node.uuid} -> {child.uuid}\n"
+            expression, childless_nodes = self.__branch_depth_first_search(
+                child, expression
+            )
+            leaf_nodes.extend(childless_nodes)
+        return expression, leaf_nodes
+
+    async def __adjust_dynamic_workers(self, node: Node):
         """
         Adjusts the number of workers based on the queue size and current worker count.
         """
@@ -136,7 +163,7 @@ class AsyncTreeExecutor:
                     if child not in self._enqueued_nodes:
                         self._enqueued_nodes.add(child)
                         self._queue.put_nowait(child)
-                await self._adjust_dynamic_workers(node)
+                await self.__adjust_dynamic_workers(node)
 
                 # Add node to output nodes and tree results
                 self._enqueued_nodes.remove(node)
@@ -245,3 +272,17 @@ class AsyncTreeExecutor:
         logger.info(
             f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete in {end_time - start_time:.2f} seconds.\033[0m"
         )
+
+    def get_leaves(self) -> list[Node]:
+        """
+        Returns the leaf nodes of the tree.
+
+        ATTENTION: The node states are returned as they were during the time of this method's execution.
+        """
+        leaf_nodes = []
+        for root in self._roots:
+            _, branch_leaf_nodes = self.__branch_depth_first_search(root)
+            for leaf in branch_leaf_nodes:
+                if leaf not in leaf_nodes:
+                    leaf_nodes.append(leaf)
+        return leaf_nodes

@@ -67,6 +67,6 @@ Powered by `asyncio` (https://docs.python.org/3/library/asyncio.html)
 - `pytest` to run tests, add `-s` flag for tests to run `print` statements
 
 ## Zen ##
-1. Follow established names: a Node is a Node, not a "Leaf".
+1. Follow established names: a Node is a Node.
 2. Syntax sugar is sweet in moderation.
 3. Give the programmer granular control.

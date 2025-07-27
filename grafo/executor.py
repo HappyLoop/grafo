@@ -2,15 +2,18 @@ import asyncio
 import asyncio.log
 import inspect
 import time
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Generic, Optional, TypeVar
 from uuid import uuid4
 
 from grafo._internal import logger
 
 from .components import Chunk, Node
 
+N = TypeVar("N")
+C = TypeVar("C")
 
-class AsyncTreeExecutor:
+
+class AsyncTreeExecutor(Generic[N, C]):
     """
     An executor that processes a tree of nodes concurrently. Rules:
     - Each node is processed by a worker.
@@ -188,7 +191,7 @@ class AsyncTreeExecutor:
         for _ in range(self._num_workers):
             self._queue.put_nowait(None)
 
-    async def run(self) -> list[Node]:
+    async def run(self) -> list[Node[N]]:
         """
         Runs the tree with the specified number of workers.
         """
@@ -224,7 +227,7 @@ class AsyncTreeExecutor:
     async def yielding(
         self,
         latency: float = 0.01,
-    ) -> AsyncGenerator[Node | Chunk, None]:
+    ) -> AsyncGenerator[Node[N] | Chunk[C], None]:
         """
         Runs the tree with the specified number of workers and yields results as they are set.
         """

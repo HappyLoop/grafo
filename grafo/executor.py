@@ -276,7 +276,7 @@ class AsyncTreeExecutor(Generic[N, C]):
             f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete in {end_time - start_time:.2f} seconds.\033[0m"
         )
 
-    def get_leaves(self) -> list[Node]:
+    def get_leaves(self) -> list[Node[N]]:
         """
         Returns the leaf nodes of the tree.
 

@@ -61,8 +61,14 @@ class Executor(Generic[N, C]):
         return self._uuid
 
     @property
-    def results(self) -> list[Node[N] | Chunk[C]]:
-        return self._output
+    def results(self) -> list[N | C | None]:
+        results = []
+        for item in self._output:
+            if isinstance(item.output, list):
+                results.extend(item.output)
+            else:
+                results.append(item.output)
+        return results
 
     def __branch_depth_first_search(
         self, node: Node, expression: str = "", leaf_nodes: list[Node] | None = None
@@ -127,7 +133,6 @@ class Executor(Generic[N, C]):
                     if child not in self._enqueued_nodes:
                         self._enqueued_nodes.add(child)
                         self._queue.put_nowait(child)
-                await self.__adjust_dynamic_workers(node)
                 logger.info(
                     f"{'|   ' * (node.metadata.level - 1) + ('|   ' if node.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {node} in {node.metadata.runtime} seconds"
                 )
@@ -139,14 +144,14 @@ class Executor(Generic[N, C]):
                 )
                 self._stop.set()
             finally:
-                self._enqueued_nodes.remove(node)
                 self._queue.task_done()
+                self._enqueued_nodes.remove(node)
+                await self.__adjust_dynamic_workers(node)
 
     async def stop_tree(self):
         """
         Gracefully stops all workers.
         """
-        print(f"Workers: {len(self._workers)}, Queue: {self._queue.qsize()}")
         self._stop.set()
         for _ in range(len(self._workers)):
             self._queue.put_nowait(None)
@@ -232,7 +237,7 @@ class Executor(Generic[N, C]):
             f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete in {end_time - start_time:.2f} seconds.\033[0m"
         )
 
-    def get_leaves(self) -> list[Node[N]]:
+    def get_leaves(self) -> list[Node[N] | Chunk[C]]:
         """
         Returns the leaf nodes of the tree.
 

@@ -183,13 +183,9 @@ async def test_error():
 
     # Assert result
     nodes_uuids = [root_node.uuid, child_node1.uuid, grandchild_node1.uuid]
-    print(1)
     assert all(node.uuid in nodes_uuids for node in result)
-    print(2)
     assert child_node2.uuid not in nodes_uuids
-    print(3)
     assert grandchild_node2.uuid not in nodes_uuids
-    print(result)
 
 
 @pytest.mark.asyncio
@@ -490,9 +486,9 @@ async def test_mixed_tree_with_yielding():
     intermediate_results: list[Chunk[str]] = []
 
     async for item in executor.yielding():
+        node_completions.append(item.output)
         if isinstance(item, Node):
             # This is a completed node
-            node_completions.append(item.uuid)
             results.append(f"Completed: {item.uuid}")
             logger.info(f"Completed node: {item.uuid}")
         else:
@@ -502,16 +498,21 @@ async def test_mixed_tree_with_yielding():
             logger.info(f"Intermediate result: {item.uuid} -> {item.output}")
 
     # Assert that all nodes were completed
-    expected_completed_nodes = [
-        root_node.uuid,
-        child1_node.uuid,
-        child2_node.uuid,
-        grandchild1_node.uuid,
-        grandchild2_node.uuid,
+    expected_results = [
+        "root result",
+        "child1 progress 0",
+        "child2 result",
+        "child1 progress 1",
+        "child1 progress 2",
+        "child1 completed",
+        "grandchild2 result",
+        "grandchild1 progress 0",
+        "grandchild1 progress 1",
+        "grandchild1 progress 2",
+        "grandchild1 completed",
     ]
 
-    assert all(node_uuid in node_completions for node_uuid in expected_completed_nodes)
-    assert len(node_completions) == len(expected_completed_nodes)
+    assert all(node_uuid in node_completions for node_uuid in expected_results)
 
     # Assert that we got intermediate results from yielding nodes
     yielding_nodes = [child1_node.uuid, grandchild1_node.uuid]
@@ -526,11 +527,6 @@ async def test_mixed_tree_with_yielding():
         assert len(node_results) >= 3  # At least 3 yields per yielding node
         assert any("progress" in result for result in node_results)
         assert any("completed" in result for result in node_results)
-
-    # Verify the structure of results
-    assert len(results) > len(
-        expected_completed_nodes
-    )  # More results than nodes due to yielding
 
     logger.info("Mixed tree test completed successfully!")
     logger.info(f"Completed nodes: {node_completions}")

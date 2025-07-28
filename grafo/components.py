@@ -289,12 +289,12 @@ class Node(Generic[N]):
                 else:
                     # TODO: check this
                     if hasattr(self, "__orig_class__"):
-                        actual_type = get_args(self.__orig_class__)[0]  # type: ignore
-                        if actual_type != Any and not isinstance(
-                            result.output, actual_type
+                        runtime_type = get_args(self.__orig_class__)[0]  # type: ignore
+                        if runtime_type != Any and not isinstance(
+                            result.output, runtime_type
                         ):
                             raise MismatchChunkType(
-                                f"Node {self} yielded a chunk of type {type(result.output)} but expected {actual_type}"
+                                f"Node {self} yielded a chunk of type {type(result.output)} but expected {runtime_type}"
                             )
                     yield result
 

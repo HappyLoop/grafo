@@ -13,7 +13,7 @@ N = TypeVar("N")
 C = TypeVar("C")
 
 
-class Executor(Generic[N, C]):
+class TreeExecutor(Generic[N, C]):
     """
     Processes a tree of nodes concurrently. Rules:
     - Each node is processed by a worker.

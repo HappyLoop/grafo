@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 import pytest
 
 from grafo._internal import logger
-from grafo import Executor, Node
+from grafo import TreeExecutor, Node
 
 logger.setLevel(logging.DEBUG)
 
@@ -84,7 +84,7 @@ async def test_manual_tree():
     await child_node1.connect(grandchild_node1)
     await child_node1.connect(grandchild_node2)
 
-    executor = Executor(uuid="Manual Tree", roots=[root_node])
+    executor = TreeExecutor(uuid="Manual Tree", roots=[root_node])
     result = await executor.run()
 
     # Assert result
@@ -112,7 +112,7 @@ async def test_picker():
     await root_node.connect(child_node2)
     await root_node.connect(child_node3)
 
-    executor = Executor(uuid="Picker Tree", roots=[root_node])
+    executor = TreeExecutor(uuid="Picker Tree", roots=[root_node])
     result = await executor.run()
 
     # Assert result
@@ -145,7 +145,7 @@ async def test_union():
     await child_node3.connect(grandchild_node1)
     await grandchild_node1.connect(grandchild_node2)
 
-    executor = Executor(uuid="Union Tree", roots=[root_node])
+    executor = TreeExecutor(uuid="Union Tree", roots=[root_node])
     result = await executor.run()
 
     # Assert result
@@ -178,7 +178,7 @@ async def test_error():
     await child_node1.connect(grandchild_node1)
     await child_node2.connect(grandchild_node2)
 
-    executor = Executor(uuid="Error Tree", roots=[root_node])
+    executor = TreeExecutor(uuid="Error Tree", roots=[root_node])
     result = await executor.run()
 
     # Assert result
@@ -203,7 +203,7 @@ async def test_yielding():
     await child_node1.connect(grandchild_node2)
 
     # Manually connecting nodes
-    executor = Executor(uuid="Yielding Tree", roots=[root_node])
+    executor = TreeExecutor(uuid="Yielding Tree", roots=[root_node])
     results = []
 
     async for node in executor.yielding():
@@ -251,7 +251,7 @@ async def test_yield_with_timeout():
     await child1_node.connect(union_node)
     await child2_node.connect(union_node)
 
-    executor = Executor(uuid="Yielding Tree with Timeout", roots=[root_node])
+    executor = TreeExecutor(uuid="Yielding Tree with Timeout", roots=[root_node])
 
     results = []
     async for node in executor.yielding():
@@ -296,7 +296,7 @@ async def test_simple_tree_structure():
     await child2_node.connect(grandchild4_node)
 
     # Create executor and build the tree
-    executor = Executor(uuid="Simple Tree", roots=[root_node])
+    executor = TreeExecutor(uuid="Simple Tree", roots=[root_node])
     result = await executor.run()
 
     # Assert all nodes were processed
@@ -341,7 +341,7 @@ async def test_multiple_roots_structure():
     await child2_node.connect(grandchild4_node)
 
     # Create executor and build the tree
-    executor = Executor(uuid="Multiple Roots Tree", roots=[root1_node, root2_node])
+    executor = TreeExecutor(uuid="Multiple Roots Tree", roots=[root1_node, root2_node])
     result = await executor.run()
 
     # Assert all nodes were processed
@@ -376,7 +376,7 @@ async def test_cycle():
     await node_a.connect(node_b)
 
     # Create executor and run the tree
-    executor = Executor(uuid="Cycle Break Tree", roots=[node_a])
+    executor = TreeExecutor(uuid="Cycle Break Tree", roots=[node_a])
     result = await executor.run()
 
     # Assert that the cycle was broken and nodes were processed
@@ -430,7 +430,7 @@ async def test_dynamic_cycle_connection():
     await node_a.connect(node_b)
 
     # Create executor and run the tree
-    executor = Executor(uuid="Dynamic Cycle Tree", roots=[node_a])
+    executor = TreeExecutor(uuid="Dynamic Cycle Tree", roots=[node_a])
     result = await executor.run()
 
     # Assert that both nodes were processed
@@ -478,7 +478,7 @@ async def test_mixed_tree_with_yielding():
     await child2_node.connect(grandchild2_node)
 
     # Create executor and run the tree
-    executor = Executor(uuid="Mixed Tree", roots=[root_node])
+    executor = TreeExecutor(uuid="Mixed Tree", roots=[root_node])
 
     # Test the yielding method to get both node completions and intermediate results
     results = []
@@ -580,7 +580,7 @@ async def test_forwarding_success():
     await node_b.connect(node_c, forward_as="data_from_B")
 
     # Create executor and run the tree
-    executor = Executor(uuid="Forwarding Success Test", roots=[node_a])
+    executor = TreeExecutor(uuid="Forwarding Success Test", roots=[node_a])
     result = await executor.run()
 
     # Assert all nodes were processed
@@ -644,7 +644,7 @@ async def test_forwarding_conflict_error():
     await node_b.connect(node_c, forward_as="data_from_B")
 
     # Create executor and run the tree
-    executor = Executor(uuid="Forwarding Conflict Test", roots=[node_a])
+    executor = TreeExecutor(uuid="Forwarding Conflict Test", roots=[node_a])
     result = await executor.run()
 
     # Assert all nodes were processed
@@ -722,7 +722,7 @@ async def test_on_before_forward_filtering():
     )
 
     # Create executor and run the tree
-    executor = Executor(uuid="On Before Forward Filtering Test", roots=[node_a])
+    executor = TreeExecutor(uuid="On Before Forward Filtering Test", roots=[node_a])
     result = await executor.run()
 
     # Assert all nodes were processed
@@ -806,7 +806,7 @@ async def test_on_before_forward_with_kwargs():
     )
 
     # Create executor and run the tree
-    executor = Executor(uuid="On Before Forward With Kwargs Test", roots=[node_a])
+    executor = TreeExecutor(uuid="On Before Forward With Kwargs Test", roots=[node_a])
     result = await executor.run()
 
     # Assert all nodes were processed
@@ -858,7 +858,7 @@ async def test_repr_two_roots_conjoined():
     await shared_node.connect(final_node)
 
     # Create executor with both roots
-    executor = Executor(
+    executor = TreeExecutor(
         uuid="Conjoined Tree Test",
         description="A tree with two roots that conjoin at a shared node",
         roots=[root1_node, root2_node],
@@ -956,7 +956,7 @@ async def test_get_output_nodes():
     await grandchild_node.connect(leaf4_node)
 
     # Create executor
-    executor = Executor(
+    executor = TreeExecutor(
         uuid="Output Nodes Test",
         description="Testing get_output_nodes method",
         roots=[root_node],
@@ -1006,7 +1006,7 @@ async def test_get_output_nodes():
     leaf6_node = create_node("leaf6", mockup_coroutine)
     await root2_node.connect(leaf6_node)
 
-    executor_multi_root = Executor(
+    executor_multi_root = TreeExecutor(
         uuid="Multi-Root Output Nodes Test",
         description="Testing get_output_nodes with multiple roots",
         roots=[root_node, root2_node],
@@ -1029,7 +1029,7 @@ async def test_get_output_nodes():
 
     # Test with a tree that has a single node (root is also a leaf)
     single_node = create_node("single", mockup_coroutine)
-    executor_single = Executor(
+    executor_single = TreeExecutor(
         uuid="Single Node Test",
         description="Testing get_output_nodes with a single node",
         roots=[single_node],

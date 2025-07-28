@@ -1,4 +1,4 @@
 from .components import Node, Chunk
-from .executor import Executor
+from .executor import TreeExecutor
 
-__all__ = ["Node", "Executor", "Chunk"]
+__all__ = ["Node", "TreeExecutor", "Chunk"]

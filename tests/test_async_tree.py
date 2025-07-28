@@ -72,7 +72,7 @@ async def cycle_coroutine(node: Node, child_node: Node):
 @pytest.mark.asyncio
 async def test_manual_tree():
     """
-    Test the AsyncTreeExecutor using manual connections between nodes to build the tree.
+    Test the TreeExecutor using manual connections between nodes to build the tree.
     """
     root_node = create_node("root", mockup_coroutine)
     child_node1 = create_node("child1", mockup_coroutine)
@@ -101,7 +101,7 @@ async def test_manual_tree():
 @pytest.mark.asyncio
 async def test_picker():
     """
-    Test the AsyncTreeExecutor using a JSON-like structure to build the tree.
+    Test the TreeExecutor using a JSON-like structure to build the tree.
     """
     root_node = create_node("root", mockup_picker)
     child_node1 = create_node("child1", mockup_coroutine)
@@ -129,7 +129,7 @@ async def test_picker():
 @pytest.mark.asyncio
 async def test_union():
     """
-    Test the AsyncTreeExecutor using a JSON-like structure to build the tree with a UnionNode.
+    Test the TreeExecutor using a JSON-like structure to build the tree with a UnionNode.
     """
     root_node = create_node("root", mockup_coroutine)
     child_node1 = create_node("child1", mockup_coroutine)
@@ -165,7 +165,7 @@ async def test_union():
 @pytest.mark.asyncio
 async def test_error():
     """
-    Test the AsyncTreeExecutor using a JSON-like structure to build the tree with a UnionNode.
+    Test the TreeExecutor using a JSON-like structure to build the tree with a UnionNode.
     """
     root_node = create_node("root", mockup_coroutine)
     child_node1 = create_node("child1", mockup_coroutine)
@@ -191,7 +191,7 @@ async def test_error():
 @pytest.mark.asyncio
 async def test_yielding():
     """
-    Test the AsyncTreeExecutor's run_and_yield method to ensure it yields results as they are set.
+    Test the TreeExecutor's run_and_yield method to ensure it yields results as they are set.
     """
     root_node = create_node("root", mockup_coroutine)
     child_node1 = create_node("child1", mockup_coroutine)
@@ -227,7 +227,7 @@ async def test_yielding():
 @pytest.mark.asyncio
 async def test_yield_with_timeout():
     """
-    Test the AsyncTreeExecutor's yielding method with a UnionNode that times out,
+    Test the TreeExecutor's yielding method with a UnionNode that times out,
     ensuring that nodes that exceed the timeout do not yield a result.
     """
 
@@ -829,7 +829,7 @@ async def test_on_before_forward_with_kwargs():
 @pytest.mark.asyncio
 async def test_repr_two_roots_conjoined():
     """
-    Test the __repr__ method of AsyncTreeExecutor with a tree that has 2 roots
+    Test the __repr__ method of TreeExecutor with a tree that has 2 roots
     that eventually become conjoined through a shared child node.
     """
     # Create nodes for the first root branch
@@ -920,7 +920,7 @@ async def test_repr_two_roots_conjoined():
 @pytest.mark.asyncio
 async def test_get_output_nodes():
     """
-    Test the get_output_nodes method of AsyncTreeExecutor to ensure it correctly
+    Test the get_output_nodes method of TreeExecutor to ensure it correctly
     identifies all leaf nodes (nodes with no children) in the tree.
     """
     # Create a complex tree structure with multiple leaf nodes

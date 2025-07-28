@@ -134,10 +134,20 @@ class Node(Generic[N]):
         super().__setattr__(name, value)
 
     @property
-    def output(self) -> N | list[N] | None:
+    def output(self) -> N | None:
         if inspect.isasyncgenfunction(self.coroutine):
-            return self._aggregated_output
+            raise NotAsyncCallableError(
+                "Node contains a yielding coroutine. Use `aggregated_output` instead."
+            )
         return self._output
+
+    @property
+    def aggregated_output(self) -> list[N]:
+        if not inspect.isasyncgenfunction(self.coroutine):
+            raise NotAsyncCallableError(
+                "Node does not contain a yielding coroutine. Use `output` instead."
+            )
+        return self._aggregated_output
 
     def _add_event(self, event: asyncio.Event):
         """

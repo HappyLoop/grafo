@@ -20,7 +20,7 @@ nodes = {
 }
 
 # Use the '|' operator to connect the nodes
-executor = AsyncTreeExecutor(logger=logger)
+executor = TreeExecutor(logger=logger)
 tree = executor | nodes
 result = await tree.run()
 ```

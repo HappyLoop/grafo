@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-T = TypeVar("T")
+
+C = TypeVar("C")
 
 
 @dataclass(slots=True, frozen=True)
@@ -11,10 +12,10 @@ class Metadata:
 
 
 @dataclass(slots=True, frozen=True)
-class Chunk(Generic[T]):
+class Chunk(Generic[C]):
     """
     A Chunk represents an intermediate output of a node. Useful for trying filter the different outputs from a tree.
     """
 
     uuid: str
-    output: T
+    output: C

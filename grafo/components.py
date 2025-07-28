@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import time
 from typing import (
+    get_args,
     Any,
     AsyncGenerator,
     Callable,
@@ -20,6 +21,7 @@ from grafo._internal import (
 )
 from grafo.errors import (
     ForwardingOverrideError,
+    MismatchChunkType,
     NotAsyncCallableError,
     SafeExecutionError,
 )
@@ -40,10 +42,10 @@ def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-T = TypeVar("T")
+N = TypeVar("N")
 
 
-class Node(Generic[T]):
+class Node(Generic[N]):
     """
     A Node is a unit of work that can be executed concurrently. It contains a coroutine function that is executed by a worker.
 
@@ -89,8 +91,8 @@ class Node(Generic[T]):
         self.children: list["Node"] = []
 
         # * Output
-        self._output: Optional[T] = None
-        self._aggregated_output: list[T] = []
+        self._output: Optional[N] = None
+        self._aggregated_output: list[N] = []
 
         # * Events
         self.on_connect = on_connect
@@ -132,16 +134,10 @@ class Node(Generic[T]):
         super().__setattr__(name, value)
 
     @property
-    def output(self) -> T | None:
+    def output(self) -> N | list[N] | None:
+        if inspect.isasyncgenfunction(self.coroutine):
+            return self._aggregated_output
         return self._output
-
-    @property
-    def aggregated_output(self) -> list[T] | None:
-        if not inspect.isasyncgenfunction(self.coroutine):
-            raise NotAsyncCallableError(
-                "Cannot access aggregated_output because Node does not contain a coroutine that yields values."
-            )
-        return self._aggregated_output
 
     def _add_event(self, event: asyncio.Event):
         """
@@ -265,11 +261,7 @@ class Node(Generic[T]):
         """
         try:
             start_time = time.time()
-            logger.info(
-                f"{'|   ' * self.metadata.level}\033[4m\033[93mRunning\033[0m {self}"
-            )
             self._is_running = True
-
             runtime_kwargs = self._eval_kwargs(self.kwargs)
             self._output = await self.coroutine(**runtime_kwargs)
             self._event.set()
@@ -279,35 +271,39 @@ class Node(Generic[T]):
             self.metadata = Metadata(
                 runtime=end_time - start_time, level=self.metadata.level
             )
-            logger.info(
-                f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
-            )
 
     @safe_execution
-    async def _run_yielding(self) -> AsyncGenerator[Any, None]:
+    async def _run_yielding(self) -> AsyncGenerator[Chunk[N], None]:
         """
         Asynchronously runs the coroutine of in this node.
         """
         try:
             start_time = time.time()
-            logger.info(
-                f"{'|   ' * self.metadata.level}\033[4m\033[93mRunning\033[0m {self}"
-            )
             self._is_running = True
             runtime_kwargs = self._eval_kwargs(self.kwargs)
             async for result in self.coroutine(**runtime_kwargs):
                 self._aggregated_output.append(result)
                 self._output = result
-                yield Chunk[type[result]](self.uuid, result)
+                if not isinstance(result, Chunk):
+                    yield Chunk[N](self.uuid, result)
+                else:
+                    # TODO: check this
+                    if hasattr(self, "__orig_class__"):
+                        runtime_type = get_args(self.__orig_class__)[0]  # type: ignore
+                        if runtime_type != Any and not isinstance(
+                            result.output, runtime_type
+                        ):
+                            raise MismatchChunkType(
+                                f"Node {self} yielded a chunk of type {type(result.output)} but expected {runtime_type}"
+                            )
+                    yield result
+
             self._event.set()
         finally:
             self._is_running = False
             end_time = time.time()
             self.metadata = Metadata(
                 runtime=end_time - start_time, level=self.metadata.level
-            )
-            logger.info(
-                f"{'|   ' * (self.metadata.level - 1) + ('|   ' if self.metadata.level > 0 else '')}\033[92m\033[4mCompleted\033[0m {self} in {self.metadata.runtime} seconds"
             )
 
     async def _forward_output(self):
@@ -331,7 +327,7 @@ class Node(Generic[T]):
                     )
                 child.kwargs[forward_as] = forward_data
 
-    async def run(self) -> Any:
+    async def run(self) -> None:
         """
         Wraps the run method to run the on_before_run and on_after_run callbacks.
         """

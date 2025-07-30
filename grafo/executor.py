@@ -61,14 +61,16 @@ class TreeExecutor(Generic[N, C]):
         return self._uuid
 
     @property
-    def results(self) -> list[N | C | None]:
-        results = []
-        for item in self._output:
-            if isinstance(item.output, list):
-                results.extend(item.output)
-            else:
-                results.append(item.output)
-        return results
+    def description(self) -> str:
+        return self._description or ""
+
+    @property
+    def roots(self) -> list[Node]:
+        return self._roots
+
+    @property
+    def errors(self) -> list[Exception]:
+        return self._errors
 
     def __branch_depth_first_search(
         self, node: Node, expression: str = "", leaf_nodes: list[Node] | None = None

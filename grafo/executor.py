@@ -87,6 +87,15 @@ class TreeExecutor(Generic[N, C]):
             leaf_nodes.extend(childless_nodes)
         return expression, leaf_nodes
 
+    async def __set_initial_workers(self):
+        """
+        Sets the initial number of workers based on the number of root nodes.
+        """
+        self._workers = [
+            asyncio.create_task(self.__worker())
+            for _ in range(max(len(self._workers), len(self._roots)))
+        ]
+
     async def __adjust_dynamic_workers(self, node: Node):
         """
         Adjusts the number of workers based on the queue size and current worker count.
@@ -169,10 +178,7 @@ class TreeExecutor(Generic[N, C]):
             self._enqueued_nodes.add(root)
         base_level = min(levels)
 
-        self._workers = [
-            asyncio.create_task(self.__worker())
-            for _ in range(max(len(self._workers), 1))
-        ]
+        await self.__set_initial_workers()
 
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")
@@ -206,10 +212,7 @@ class TreeExecutor(Generic[N, C]):
             self._enqueued_nodes.add(root)
         base_level = min(levels)
 
-        self._workers = [
-            asyncio.create_task(self.__worker())
-            for _ in range(max(len(self._workers), 1))
-        ]
+        await self.__set_initial_workers()
 
         if len(self._workers) == 0:
             raise ValueError("No workers were created.")

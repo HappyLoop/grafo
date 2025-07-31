@@ -159,6 +159,20 @@ class TreeExecutor(Generic[N, C]):
                 self._enqueued_nodes.remove(node)
                 await self.__adjust_dynamic_workers(node)
 
+    def get_leaves(self) -> list[Node[N]]:
+        """
+        Returns the leaf nodes of the tree.
+
+        ATTENTION: The node states are returned as they were during the time of this method's execution.
+        """
+        leaf_nodes = []
+        for root in self._roots:
+            _, branch_leaf_nodes = self.__branch_depth_first_search(root)
+            for leaf in branch_leaf_nodes:
+                if leaf not in leaf_nodes:
+                    leaf_nodes.append(leaf)
+        return leaf_nodes
+
     async def stop_tree(self):
         """
         Gracefully stops all workers.
@@ -241,17 +255,3 @@ class TreeExecutor(Generic[N, C]):
         logger.info(
             f"{'|   ' * (base_level - 1) + ('|---' if base_level > 0 else '')}\033[4m\033[90m{self._uuid} complete in {end_time - start_time:.2f} seconds.\033[0m"
         )
-
-    def get_leaves(self) -> list[Node[N] | Chunk[C]]:
-        """
-        Returns the leaf nodes of the tree.
-
-        ATTENTION: The node states are returned as they were during the time of this method's execution.
-        """
-        leaf_nodes = []
-        for root in self._roots:
-            _, branch_leaf_nodes = self.__branch_depth_first_search(root)
-            for leaf in branch_leaf_nodes:
-                if leaf not in leaf_nodes:
-                    leaf_nodes.append(leaf)
-        return leaf_nodes
